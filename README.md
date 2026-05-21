@@ -173,7 +173,6 @@ harness/
 │   └── team_cleanup.py
 ├── tests/                   # 55 个单元 + 集成测试
 ├── HARNESS_BUG_LOG.md       # 4 轮验证 + 改动反思日志
-├── TEAM_SHARE.md            # 30 分钟内部分享讲稿(详细版)
 └── README.md                # 你正在读的这份
 ```
 
