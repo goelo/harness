@@ -203,7 +203,6 @@ python3 -m unittest discover tests
 
 | 读什么 | 给谁 |
 |------|------|
-| [TEAM_SHARE.md](./TEAM_SHARE.md) | 30 分钟内部分享讲稿,带场景 / 流程图 / 常见坑 |
 | [HARNESS_BUG_LOG.md](./HARNESS_BUG_LOG.md) | 4 轮 dogfood 验证的 bug log + 设计反思,理解"为什么这么做" |
 | `.harness/workflow.md`(装上后) | per-turn breadcrumb 来源,理解 hook 行为 |
 

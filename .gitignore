@@ -1,6 +1,3 @@
-# Generated documentation outputs (regenerate via huashu-md-html from TEAM_SHARE.md)
-TEAM_SHARE*.html
-
 # Python
 __pycache__/
 *.pyc
