@@ -155,6 +155,36 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         )
         self.assertTrue(skill_path.is_file(), "harness-implement SKILL.md not created")
 
+    def test_creates_grill_me_skill(self):
+        """After init, .claude/skills/grill-me/SKILL.md exists."""
+        self._run_init()
+
+        skill_path = (
+            self.project_dir
+            / ".claude"
+            / "skills"
+            / "grill-me"
+            / "SKILL.md"
+        )
+        self.assertTrue(skill_path.is_file(), "grill-me SKILL.md not created")
+
+    def test_grill_me_skill_has_valid_frontmatter(self):
+        """grill-me SKILL.md starts with YAML frontmatter."""
+        self._run_init()
+
+        skill_path = (
+            self.project_dir
+            / ".claude"
+            / "skills"
+            / "grill-me"
+            / "SKILL.md"
+        )
+        content = skill_path.read_text(encoding="utf-8")
+        self.assertTrue(content.startswith("---\n"), "grill-me skill missing frontmatter")
+        self.assertIn("name: grill-me", content)
+        self.assertIn("description:", content)
+        self.assertIn("Ask the questions one at a time.", content)
+
     def test_skill_has_valid_frontmatter(self):
         """SKILL.md starts with YAML frontmatter containing name and description."""
         self._run_init()

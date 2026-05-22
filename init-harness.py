@@ -193,10 +193,13 @@ def create_claude_commands(target: Path) -> None:
 
 def create_claude_skills(target: Path) -> None:
     """Write skill files (v1.5+)."""
-    skill_dir = target / ".claude" / "skills" / "harness-implement"
-    skill_dir.mkdir(parents=True, exist_ok=True)
+    harness_skill_dir = target / ".claude" / "skills" / "harness-implement"
+    harness_skill_dir.mkdir(parents=True, exist_ok=True)
+    _write_if_missing(harness_skill_dir / "SKILL.md", SKILL_HARNESS_IMPLEMENT)
 
-    _write_if_missing(skill_dir / "SKILL.md", SKILL_HARNESS_IMPLEMENT)
+    grill_me_skill_dir = target / ".claude" / "skills" / "grill-me"
+    grill_me_skill_dir.mkdir(parents=True, exist_ok=True)
+    _write_if_missing(grill_me_skill_dir / "SKILL.md", SKILL_GRILL_ME)
 
 
 HARNESS_SECTION_MARKER = "# Agent Harness"
@@ -803,6 +806,20 @@ python3 .harness/scripts/task.py archive <task-dir>
 | Forgetting `mode: "bypassPermissions"` | Sub-agent stalls on approval — pass mode every time |
 | Skipping tester(RED) | TDD violated. Only skip on trivial changes with explicit announcement. |
 | Trusting `TeamDelete` to kill processes | It doesn't. Run team_cleanup.py after. |
+"""
+
+
+SKILL_GRILL_ME = """\
+---
+name: grill-me
+description: Interview the user relentlessly about a plan or design until reaching shared understanding, resolving each branch of the decision tree. Use when user wants to stress-test a plan, get grilled on their design, or mentions "grill me".
+---
+
+Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
+
+Ask the questions one at a time.
+
+If a question can be answered by exploring the codebase, explore the codebase instead.
 """
 
 
