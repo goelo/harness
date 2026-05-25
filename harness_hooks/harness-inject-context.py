@@ -6,14 +6,15 @@ a known role.
 
 Three roles (v1.7):
   architect — designs (info.md), reviews diff vs design, refactors when needed.
-              Reads design.md + research/*.md + context.architect.jsonl
+              Reads task docs + research/*.md + context.architect.jsonl
   developer — implements GREEN code from failing tests.
-              Reads design.md + info.md + context.developer.jsonl
+              Reads task docs + info.md + context.developer.jsonl
   tester    — writes failing tests (RED) and edge cases (VALIDATE).
-              Reads design.md + info.md + context.tester.jsonl
+              Reads task docs + info.md + context.tester.jsonl
 
-Design source (v1.7): the project root's design.md / spec.md /
-requirements.md is read directly — no per-task prd.md copy.
+Design source: the active task package's proposal.md / design.md / tasks.md
+is read first. The project root's design.md / spec.md / requirements.md is
+kept as a compatibility fallback for older task packages.
 """
 from __future__ import annotations
 
@@ -22,22 +23,48 @@ import sys
 from pathlib import Path
 
 # All three roles follow the standard pattern:
-#   design.md (project root) + info.md (task dir) + context.<role>.jsonl manifest
+#   task package docs + info.md + context.<role>.jsonl manifest
 # (Architect additionally gets research/*.md auto-included.)
 STANDARD_ROLES = ("architect", "developer", "tester")
 KNOWN_ROLES = STANDARD_ROLES
 
-# Project-root design document, in priority order.
-DESIGN_FILENAMES = ("design.md", "spec.md", "requirements.md")
+# Active task package docs, in reading order.
+TASK_CONTEXT_FILENAMES = ("proposal.md", "design.md", "tasks.md")
+
+# Project-root design document fallback, in priority order.
+ROOT_DESIGN_FILENAMES = ("design.md", "spec.md", "requirements.md")
 
 
 def find_project_design(root: Path) -> Path | None:
     """Find the project-root design document, by fallback priority."""
-    for name in DESIGN_FILENAMES:
+    for name in ROOT_DESIGN_FILENAMES:
         candidate = root / name
         if candidate.is_file():
             return candidate
     return None
+
+
+def read_task_context_docs(task_dir: Path) -> list[tuple[str, str]]:
+    """Read task package context docs in canonical order."""
+    results = []
+    for name in TASK_CONTEXT_FILENAMES:
+        content = read_file_safe(task_dir / name)
+        if content:
+            results.append((name, content))
+    return results
+
+
+def read_design_context(root: Path, task_dir: Path) -> list[tuple[str, str]]:
+    """Prefer active task package docs; fall back to project-root design doc."""
+    task_docs = read_task_context_docs(task_dir)
+    if task_docs:
+        return task_docs
+
+    design_path = find_project_design(root)
+    if design_path is None:
+        return []
+    design = read_file_safe(design_path)
+    return [(design_path.name, design)] if design else []
 
 
 def find_harness_root(start: Path) -> Path | None:
@@ -128,7 +155,7 @@ def read_directory_md_files(directory: Path) -> list[tuple[str, str]]:
 
 
 def build_standard_role_context(root: Path, task_dir: Path, role: str) -> str:
-    """Standard pattern: jsonl manifest + design.md (project root) + info.md."""
+    """Standard pattern: jsonl manifest + task docs + info.md."""
     parts = []
 
     # 1. JSONL manifest files
@@ -136,12 +163,9 @@ def build_standard_role_context(root: Path, task_dir: Path, role: str) -> str:
     for file_path, content in read_jsonl_context(root, manifest):
         parts.append(f"=== {file_path} ===\n{content}")
 
-    # 2. Design document from project root (always)
-    design_path = find_project_design(root)
-    if design_path is not None:
-        design = read_file_safe(design_path)
-        if design:
-            parts.append(f"=== {design_path.name} ===\n{design}")
+    # 2. Active task docs, with root design fallback for older task packages
+    for filename, content in read_design_context(root, task_dir):
+        parts.append(f"=== {filename} ===\n{content}")
 
     # 3. info.md (when exists — architect writes it, others read it)
     info = read_file_safe(task_dir / "info.md")
@@ -156,6 +180,38 @@ def build_standard_role_context(root: Path, task_dir: Path, role: str) -> str:
     return "\n\n".join(parts)
 
 
+def infer_role(tool_input: dict) -> str:
+    """Infer harness role from Claude or Codex tool input."""
+    direct_role = (
+        tool_input.get("subagent_type")
+        or tool_input.get("subagentType")
+        or tool_input.get("role")
+        or ""
+    )
+    if direct_role in KNOWN_ROLES:
+        return direct_role
+
+    for key in ("task_name", "name", "target"):
+        value = tool_input.get(key)
+        if not isinstance(value, str):
+            continue
+        lowered = value.lower()
+        for role in KNOWN_ROLES:
+            if role in lowered:
+                return role
+
+    return ""
+
+
+def prompt_field(tool_input: dict) -> str:
+    """Return the prompt-like field used by the current agent tool."""
+    if "prompt" in tool_input:
+        return "prompt"
+    if "message" in tool_input:
+        return "message"
+    return "prompt"
+
+
 def main() -> int:
     try:
         data = json.load(sys.stdin)
@@ -163,12 +219,7 @@ def main() -> int:
         return 0
 
     tool_input = data.get("tool_input", {})
-    role = (
-        tool_input.get("subagent_type")
-        or tool_input.get("subagentType")
-        or tool_input.get("agent_type")
-        or ""
-    )
+    role = infer_role(tool_input)
 
     if role not in KNOWN_ROLES:
         return 0
@@ -187,10 +238,11 @@ def main() -> int:
     if not context:
         return 0
 
-    original_prompt = tool_input.get("prompt", "")
+    field = prompt_field(tool_input)
+    original_prompt = tool_input.get(field, "")
     new_prompt = f"## Injected Context\n\n{context}\n\n---\n\n## Task\n\n{original_prompt}"
 
-    updated_input = {**tool_input, "prompt": new_prompt}
+    updated_input = {**tool_input, field: new_prompt}
     output = {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",

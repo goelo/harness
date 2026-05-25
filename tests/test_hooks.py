@@ -264,6 +264,32 @@ class TestInjectContextHookAllRoles(unittest.TestCase):
         self.assertIn("Use PostgreSQL", prompt, "info.md not injected")
         self.assertIn("Use TypeScript", prompt, "developer manifest not loaded")
 
+    def test_task_package_docs_override_project_root_design(self):
+        """task package proposal/design/tasks docs are injected before root design fallback."""
+        task_dir = self.project_dir / ".harness" / "tasks" / "05-19-mvp"
+        (task_dir / "proposal.md").write_text(
+            "# Proposal\n\nTask package proposal\n", encoding="utf-8"
+        )
+        (task_dir / "design.md").write_text(
+            "# Task Design\n\nTask package design\n", encoding="utf-8"
+        )
+        (task_dir / "tasks.md").write_text(
+            "# Tasks\n\nTask package task list\n", encoding="utf-8"
+        )
+
+        prompt = self._dispatch("developer", "Implement add endpoint")
+
+        self.assertIn("Task package proposal", prompt)
+        self.assertIn("Task package design", prompt)
+        self.assertIn("Task package task list", prompt)
+        self.assertNotIn("Feature A", prompt, "root design.md should be fallback only")
+
+    def test_project_root_design_is_fallback_when_task_package_docs_missing(self):
+        """project-root design.md is still injected for older task packages."""
+        prompt = self._dispatch("developer", "Implement add endpoint")
+
+        self.assertIn("Feature A", prompt, "root design.md fallback not injected")
+
     def test_tester_gets_prd_info_and_manifest(self):
         """tester reads project-root design.md + info.md + context.tester.jsonl files."""
         prompt = self._dispatch("tester", "Write tests")
@@ -321,6 +347,45 @@ class TestInjectContextHookAllRoles(unittest.TestCase):
         prompt = self._dispatch("developer", "Build it")
         self.assertIn("Use TypeScript", prompt)
         self.assertNotIn("_example", prompt)
+
+    def test_codex_spawn_agent_infers_role_from_task_name(self):
+        """Codex spawn_agent has no subagent_type, so role is inferred from task_name."""
+        output = _run_hook(self.hook_path, {
+            "cwd": str(self.project_dir),
+            "session_id": "sess-1",
+            "tool_name": "spawn_agent",
+            "tool_input": {
+                "task_name": "harness_developer",
+                "agent_type": "worker",
+                "message": "GREEN phase. Build it.",
+            },
+        })
+
+        updated = output.get("hookSpecificOutput", {}).get("updatedInput", {})
+        message = updated.get("message", "")
+        self.assertIn("Use TypeScript", message)
+        self.assertIn("Feature A", message)
+        self.assertIn("Use PostgreSQL", message)
+        self.assertIn("GREEN phase. Build it.", message)
+
+    def test_codex_followup_task_infers_role_from_target(self):
+        """Codex followup_task receives the role name through target."""
+        output = _run_hook(self.hook_path, {
+            "cwd": str(self.project_dir),
+            "session_id": "sess-1",
+            "tool_name": "followup_task",
+            "tool_input": {
+                "target": "harness_tester",
+                "message": "VALIDATE phase. Add edge cases.",
+            },
+        })
+
+        updated = output.get("hookSpecificOutput", {}).get("updatedInput", {})
+        message = updated.get("message", "")
+        self.assertIn("Table-driven tests", message)
+        self.assertIn("Feature A", message)
+        self.assertIn("Use PostgreSQL", message)
+        self.assertIn("VALIDATE phase. Add edge cases.", message)
 
 
 if __name__ == "__main__":

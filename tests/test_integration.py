@@ -79,9 +79,10 @@ class TestFullHarnessLoop(unittest.TestCase):
         data = json.loads((task_dir / "task.json").read_text())
         self.assertEqual(data["status"], "planning")
 
-        # 3. Write design doc at project root + curate context manifests.
-        # v1.7: design doc lives at project root, not inside task dir.
-        (self.project_dir / "design.md").write_text("# Auth\n\n- Login endpoint\n- JWT tokens\n")
+        # 3. Write active task package docs + curate context manifests.
+        (task_dir / "proposal.md").write_text("# Auth Proposal\n\n- Login endpoint\n")
+        (task_dir / "design.md").write_text("# Auth Design\n\n- JWT tokens\n")
+        (task_dir / "tasks.md").write_text("# Auth Tasks\n\n- Add endpoint tests\n")
         for role in ("architect", "developer", "tester"):
             (task_dir / f"context.{role}.jsonl").write_text(
                 '{"file": ".harness/spec/index.md", "reason": "team spec"}\n'
@@ -119,6 +120,7 @@ class TestFullHarnessLoop(unittest.TestCase):
         new_prompt = updated.get("prompt", "")
         self.assertIn("Login endpoint", new_prompt)
         self.assertIn("JWT tokens", new_prompt)
+        self.assertIn("Add endpoint tests", new_prompt)
 
         # 7. Archive
         result = self._run(
