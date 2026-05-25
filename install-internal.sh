@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
 # install-internal.sh — one-line installer for Agent Harness.
 #
-# Default usage (install into current directory, via SSH):
+# Default usage (install into current directory):
 #
-#   TMP=$(mktemp -d -t harness-install-XXXXXX) && \
-#   git clone --depth 1 --branch master git@git.xiaojukeji.com:comercial/harness.git "$TMP/harness" && \
-#   bash "$TMP/harness/install-internal.sh"
+#   curl -fsSL https://git.xiaojukeji.com/morganli/harness/raw/master/install-internal.sh | bash
 #
 # Pass extra flags to init-harness.py (note the -s -- separator):
 #
-#   TMP=$(mktemp -d -t harness-install-XXXXXX) && \
-#   git clone --depth 1 --branch master git@git.xiaojukeji.com:comercial/harness.git "$TMP/harness" && \
-#   bash "$TMP/harness/install-internal.sh" --no-rtk --no-caveman
+#   curl -fsSL https://git.xiaojukeji.com/morganli/harness/raw/master/install-internal.sh \
+#       | bash -s -- --no-rtk --no-caveman
 #
 # Override defaults via env vars:
 #

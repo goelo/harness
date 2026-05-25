@@ -27,26 +27,21 @@ Harness 不能根治这些问题,但能把发生频率明显降下来。
 ### 一行命令(默认安装到当前目录)
 
 ```bash
-TMP=$(mktemp -d -t harness-install-XXXXXX) && \
-git clone --depth 1 --branch master git@git.xiaojukeji.com:comercial/harness.git "$TMP/harness" && \
-bash "$TMP/harness/install-internal.sh"
+curl -fsSL https://git.xiaojukeji.com/morganli/harness/raw/master/install-internal.sh | bash
 ```
 
 ### 跳过 RTK / Caveman 自动安装
 
 ```bash
-TMP=$(mktemp -d -t harness-install-XXXXXX) && \
-git clone --depth 1 --branch master git@git.xiaojukeji.com:comercial/harness.git "$TMP/harness" && \
-bash "$TMP/harness/install-internal.sh" --no-rtk --no-caveman
+curl -fsSL https://git.xiaojukeji.com/morganli/harness/raw/master/install-internal.sh \
+    | bash -s -- --no-rtk --no-caveman
 ```
 
 ### 装到指定项目
 
 ```bash
 HARNESS_TARGET=/path/to/your/project \
-TMP=$(mktemp -d -t harness-install-XXXXXX) && \
-git clone --depth 1 --branch master git@git.xiaojukeji.com:comercial/harness.git "$TMP/harness" && \
-bash "$TMP/harness/install-internal.sh"
+    curl -fsSL https://git.xiaojukeji.com/morganli/harness/raw/master/install-internal.sh | bash
 ```
 
 ### 环境变量
