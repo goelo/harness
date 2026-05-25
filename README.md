@@ -27,13 +27,13 @@ Harness 不能根治这些问题,但能把发生频率明显降下来。
 ### 一行命令(默认安装到当前目录)
 
 ```bash
-curl -fsSL https://git.xiaojukeji.com/morganli/harness/raw/master/install-internal.sh | bash
+curl -fsSL https://git.xiaojukeji.com/comercial/harness/raw/master/install-internal.sh | bash
 ```
 
 ### 跳过 RTK / Caveman 自动安装
 
 ```bash
-curl -fsSL https://git.xiaojukeji.com/morganli/harness/raw/master/install-internal.sh \
+curl -fsSL https://git.xiaojukeji.com/comercial/harness/raw/master/install-internal.sh \
     | bash -s -- --no-rtk --no-caveman
 ```
 
@@ -41,14 +41,14 @@ curl -fsSL https://git.xiaojukeji.com/morganli/harness/raw/master/install-intern
 
 ```bash
 HARNESS_TARGET=/path/to/your/project \
-    curl -fsSL https://git.xiaojukeji.com/morganli/harness/raw/master/install-internal.sh | bash
+    curl -fsSL https://git.xiaojukeji.com/comercial/harness/raw/master/install-internal.sh | bash
 ```
 
 ### 环境变量
 
 | 变量 | 默认 | 说明 |
 |------|-----|------|
-| `HARNESS_REPO` | `https://git.xiaojukeji.com/morganli/harness.git` | 自定义 fork 时改这里 |
+| `HARNESS_REPO` | `https://git.xiaojukeji.com/comercial/harness.git` | 自定义 fork 时改这里 |
 | `HARNESS_BRANCH` | `master` | 装其他分支时改 |
 | `HARNESS_TARGET` | `$PWD` | 目标项目根目录 |
 
@@ -219,6 +219,6 @@ python3 -m unittest discover tests
 
 ## 反馈与贡献
 
-内部仓:`git@git.xiaojukeji.com:morganli/harness.git`
+内部仓:`git@git.xiaojukeji.com:comercial/harness.git`
 
 发现问题或想加 feature,可以直接在仓里开 issue / MR;或者把使用过程中踩到的坑写到 `HARNESS_BUG_LOG.md`,提 PR 一起讨论。
