@@ -1,27 +1,30 @@
 #!/usr/bin/env bash
 # install-internal.sh — one-line installer for Agent Harness.
 #
-# Default usage (install into current directory):
+# Default usage (install into current directory, via SSH):
 #
-#   curl -fsSL https://git.xiaojukeji.com/comercial/harness/raw/master/install-internal.sh | bash
+#   TMP=$(mktemp -d -t harness-install-XXXXXX) && \
+#   git clone --depth 1 --branch master git@git.xiaojukeji.com:comercial/harness.git "$TMP/harness" && \
+#   bash "$TMP/harness/install-internal.sh"
 #
 # Pass extra flags to init-harness.py (note the -s -- separator):
 #
-#   curl -fsSL https://git.xiaojukeji.com/comercial/harness/raw/master/install-internal.sh \
-#       | bash -s -- --no-rtk --no-caveman
+#   TMP=$(mktemp -d -t harness-install-XXXXXX) && \
+#   git clone --depth 1 --branch master git@git.xiaojukeji.com:comercial/harness.git "$TMP/harness" && \
+#   bash "$TMP/harness/install-internal.sh" --no-rtk --no-caveman
 #
 # Override defaults via env vars:
 #
 #   HARNESS_BRANCH=develop  curl ... | bash
 #   HARNESS_TARGET=/path/to/proj  curl ... | bash
-#   HARNESS_REPO=https://your.fork/x/harness.git  curl ... | bash
+#   HARNESS_REPO=git@your.git.host:x/harness.git  bash install-internal.sh
 
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
 # Config (env-overridable)
 # ---------------------------------------------------------------------------
-HARNESS_REPO="${HARNESS_REPO:-https://git.xiaojukeji.com/comercial/harness.git}"
+HARNESS_REPO="${HARNESS_REPO:-git@git.xiaojukeji.com:comercial/harness.git}"
 HARNESS_BRANCH="${HARNESS_BRANCH:-master}"
 HARNESS_TARGET="${HARNESS_TARGET:-$PWD}"
 

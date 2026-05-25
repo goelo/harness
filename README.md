@@ -27,28 +27,33 @@ Harness 不能根治这些问题,但能把发生频率明显降下来。
 ### 一行命令(默认安装到当前目录)
 
 ```bash
-curl -fsSL https://git.xiaojukeji.com/comercial/harness/raw/master/install-internal.sh | bash
+TMP=$(mktemp -d -t harness-install-XXXXXX) && \
+git clone --depth 1 --branch master git@git.xiaojukeji.com:comercial/harness.git "$TMP/harness" && \
+bash "$TMP/harness/install-internal.sh"
 ```
 
 ### 跳过 RTK / Caveman 自动安装
 
 ```bash
-curl -fsSL https://git.xiaojukeji.com/comercial/harness/raw/master/install-internal.sh \
-    | bash -s -- --no-rtk --no-caveman
+TMP=$(mktemp -d -t harness-install-XXXXXX) && \
+git clone --depth 1 --branch master git@git.xiaojukeji.com:comercial/harness.git "$TMP/harness" && \
+bash "$TMP/harness/install-internal.sh" --no-rtk --no-caveman
 ```
 
 ### 装到指定项目
 
 ```bash
 HARNESS_TARGET=/path/to/your/project \
-    curl -fsSL https://git.xiaojukeji.com/comercial/harness/raw/master/install-internal.sh | bash
+TMP=$(mktemp -d -t harness-install-XXXXXX) && \
+git clone --depth 1 --branch master git@git.xiaojukeji.com:comercial/harness.git "$TMP/harness" && \
+bash "$TMP/harness/install-internal.sh"
 ```
 
 ### 环境变量
 
 | 变量 | 默认 | 说明 |
 |------|-----|------|
-| `HARNESS_REPO` | `https://git.xiaojukeji.com/comercial/harness.git` | 自定义 fork 时改这里 |
+| `HARNESS_REPO` | `git@git.xiaojukeji.com:comercial/harness.git` | 自定义 fork 时改这里 |
 | `HARNESS_BRANCH` | `master` | 装其他分支时改 |
 | `HARNESS_TARGET` | `$PWD` | 目标项目根目录 |
 
@@ -56,7 +61,7 @@ HARNESS_TARGET=/path/to/your/project \
 
 - `python3 ≥ 3.10`
 - `git`
-- `curl`(用 install 脚本时)
+- SSH 访问 `git@git.xiaojukeji.com:comercial/harness.git` 的权限
 
 ---
 
