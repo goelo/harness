@@ -354,6 +354,12 @@ WORKFLOW_MD = """\
 
 [workflow-state:no_task]
 No active task. Describe what you want to accomplish — main session creates a task to track it.
+
+For harness implementation requests, run **Mandatory grill-me** against the
+project-root design/spec/requirements document before `task.py create`. Ask one
+question at a time. If a question can be answered by exploring the codebase,
+explore the codebase instead of asking. Create the task only after the design
+source and grill-me answers are confirmed.
 [/workflow-state:no_task]
 
 [workflow-state:planning]
@@ -366,20 +372,26 @@ Task is in planning. Required steps in this exact order:
      b. If missing or too vague, work with the user (or invoke grill-me) to
         produce one. Confirm before proceeding.
 
-  2. Optional: gather external info via `research/*.md` (architect can do this).
+  2. **Mandatory grill-me**:
+     a. Verify grill-me was completed before `task.py create`.
+     b. If not, stop curation and run grill-me now before any agent dispatch.
+     c. Ask one question at a time; explore the codebase when the answer is
+        discoverable locally.
 
-  3. **Curate 3 manifests** (Phase 1.3 — required before any agent dispatch):
+  3. Optional: gather external info via `research/*.md` (architect can do this).
+
+  4. **Curate 3 manifests** (Phase 1.3 — required before any agent dispatch):
      - `context.architect.jsonl`  — at least .harness/spec/index.md
      - `context.developer.jsonl`  — spec + relevant research
      - `context.tester.jsonl`     — spec + testing conventions
      Each file MUST have at least one row with a `file` field
      (not just the `_example` seed row).
 
-  4. Dispatch `architect` agent → writes `info.md` (now has spec via manifest).
+  5. Dispatch `architect` agent → writes `info.md` (now has spec via manifest).
 
-  5. (Optional) Refine manifests if architect's design uncovers needs not yet in manifests.
+  6. (Optional) Refine manifests if architect's design uncovers needs not yet in manifests.
 
-  6. Run: `python3 .harness/scripts/task.py start <task-dir>`.
+  7. Run: `python3 .harness/scripts/task.py start <task-dir>`.
      This command WILL FAIL if manifests are still seed-only.
 
 WHY this order: architect itself reads context.architect.jsonl to see team
@@ -983,9 +995,10 @@ description: |
 # Harness Implement
 
 Walks the AI through the full v1.6 harness TDD flow:
-read user's design doc → architect produces info.md → confirm execution mode →
-per-slice TDD cycle (tester RED → developer GREEN → architect REVIEW → tester
-VALIDATE) → archive. Three-agent Teams mode is opt-in per task.
+read user's design doc → **Mandatory grill-me** before task creation → architect
+produces info.md → confirm execution mode → per-slice TDD cycle (tester RED →
+developer GREEN → architect REVIEW → tester VALIDATE) → archive. Three-agent
+Teams mode is opt-in per task.
 
 ## When to Use
 
@@ -1003,13 +1016,21 @@ User points at a design/spec/requirements markdown file (`design.md`, `spec.md`,
 The user's design doc IS the PRD. Do not rewrite it. Architect's job is
 **technical decomposition into testable contracts**, not requirements authoring.
 
+## Mandatory grill-me
+
+Run `grill-me` before `task.py create` for every harness implementation request,
+even when the design document looks complete. Ask one question at a time. If a
+question can be answered by exploring the codebase, explore the codebase instead
+of asking. Proceed only after the design source and grill-me answers are
+confirmed.
+
 ## Flow Overview
 
 | Step | Action | Checkpoint? |
 |------|--------|-------------|
 | 1 | Confirm design doc at project root (design.md / spec.md / requirements.md). Hooks read it directly — no copy. | — |
-| 2 | `task.py create "<title>"` | — |
-| 3 | Confirm design doc with user (or invoke grill-me to fill gaps) | **YES — wait for confirm** |
+| 2 | Mandatory grill-me before `task.py create`; confirm answers with user | **YES — wait for confirm** |
+| 3 | `task.py create "<title>"` | — |
 | 4 | Curate 3 manifests (architect/developer/tester) | — |
 | 5 | Dispatch `architect` → produces `info.md` | — |
 | 6 | Verify info.md has testable contracts + slice plan | — |
@@ -1030,7 +1051,12 @@ The user's design doc IS the PRD. Do not rewrite it. Architect's job is
 ```bash
 # Verify design doc exists at project root (one of these).
 ls design.md spec.md requirements.md 2>/dev/null
+```
 
+Run `grill-me` now. Do not create the harness task until grill-me has resolved
+the requirement boundary, acceptance criteria, and major design decisions.
+
+```bash
 # Create task. Hooks will inject the project-root design doc directly —
 # no copy into the task dir.
 python3 .harness/scripts/task.py create "<short title from design doc>"
@@ -1158,6 +1184,7 @@ python3 .harness/scripts/task.py archive <task-dir>
 ## Required Behaviors
 
 - **Wait at user checkpoints** (PRD confirm, slice plan confirm, execution-mode confirm, per-slice review)
+- **Run Mandatory grill-me before `task.py create`** for every harness implementation request
 - **Pass `mode: "bypassPermissions"`** on EVERY Agent call
 - **Do not spawn 3 execution teammates by default.** Teams mode requires explicit
   user confirmation after `task.py start`.
@@ -1174,6 +1201,7 @@ python3 .harness/scripts/task.py archive <task-dir>
 | Mistake | Fix |
 |---------|-----|
 | Rewriting user's design doc | Don't. Hooks read it directly from project root — the doc IS the PRD. |
+| Skipping Mandatory grill-me | Stop and run grill-me before `task.py create` or before any further planning work |
 | Skipping manifest curation | task.py start gate will reject — curate first |
 | Architect produces vague info.md | Reject and re-dispatch with explicit "testable contracts" requirement |
 | Sub-agent runs git commit | Stop it. Only main session commits. |
@@ -1210,8 +1238,12 @@ as an explicit discipline:
 Use this skill when the user points at `design.md`, `spec.md`, `requirements.md`,
 or another markdown spec and asks for implementation in a harness project.
 
-Use `grill-me` before task creation when the requirement, boundary, acceptance
-criteria, or major design decision is still unclear.
+## Mandatory grill-me
+
+Run `grill-me` before `task.py create` for every harness implementation request.
+Ask one question at a time. If a question can be answered by exploring the
+codebase, explore the codebase instead of asking. Create the task only after the
+design source and grill-me answers are confirmed.
 
 ## Core Principle
 
@@ -1232,16 +1264,17 @@ The architect role turns it into testable technical contracts in `info.md`.
 | Step | Action |
 | --- | --- |
 | 1 | Confirm the design document exists in the project root. |
-| 2 | Run `python3 .harness/scripts/task.py create "<title>"`. |
-| 3 | Curate `context.architect.jsonl`, `context.developer.jsonl`, and `context.tester.jsonl`. |
-| 4 | Build architect context with `context.py`, then open an architect child session to write `info.md`. |
-| 5 | Verify `info.md` contains testable contracts and a slice plan. |
-| 6 | Run `python3 .harness/scripts/task.py start <task-dir>`. |
-| 7 | Ask whether to enable 3-agent mode for execution. |
-| 8 | If confirmed, keep architect/tester/developer child sessions open; otherwise open role sessions only when a phase needs them. |
-| 9 | For every slice, run tester RED, developer GREEN, architect REVIEW, tester VALIDATE. |
-| 10 | Parent session verifies tests and owns git commits. |
-| 11 | Close child sessions and archive the task. |
+| 2 | Mandatory grill-me before `task.py create`; confirm answers with the user. |
+| 3 | Run `python3 .harness/scripts/task.py create "<title>"`. |
+| 4 | Curate `context.architect.jsonl`, `context.developer.jsonl`, and `context.tester.jsonl`. |
+| 5 | Build architect context with `context.py`, then open an architect child session to write `info.md`. |
+| 6 | Verify `info.md` contains testable contracts and a slice plan. |
+| 7 | Run `python3 .harness/scripts/task.py start <task-dir>`. |
+| 8 | Ask whether to enable 3-agent mode for execution. |
+| 9 | If confirmed, keep architect/tester/developer child sessions open; otherwise open role sessions only when a phase needs them. |
+| 10 | For every slice, run tester RED, developer GREEN, architect REVIEW, tester VALIDATE. |
+| 11 | Parent session verifies tests and owns git commits. |
+| 12 | Close child sessions and archive the task. |
 
 ## Context Commands
 
@@ -1308,6 +1341,7 @@ then close or leave it idle only when the next phase will reuse it immediately.
 ## Non-Negotiable Checks
 
 - Curate all three context manifests before `task.py start`.
+- Run Mandatory grill-me before `task.py create`.
 - Include `context.py` output in every DeepSeek child-session prompt.
 - Keep role write boundaries explicit in each `agent_open` prompt.
 - Verify tests in the parent session before calling a slice complete.
@@ -1335,8 +1369,12 @@ hooks to inject task state and role-specific context into Codex child agents.
 Use this skill when the user points at `design.md`, `spec.md`, `requirements.md`,
 or another markdown spec and asks for implementation in a harness project.
 
-Use `grill-me` before task creation when the requirement, boundary, acceptance
-criteria, or major design decision is still unclear.
+## Mandatory grill-me
+
+Run `grill-me` before `task.py create` for every harness implementation request.
+Ask one question at a time. If a question can be answered by exploring the
+codebase, explore the codebase instead of asking. Create the task only after the
+design source and grill-me answers are confirmed.
 
 ## Required Setup
 
@@ -1360,16 +1398,17 @@ scripts.
 | Step | Action |
 | --- | --- |
 | 1 | Confirm the design document exists in the project root. |
-| 2 | Run `python3 .harness/scripts/task.py create "<title>"`. |
-| 3 | Curate `context.architect.jsonl`, `context.developer.jsonl`, and `context.tester.jsonl`. |
-| 4 | Spawn `architect` to produce `info.md`. |
-| 5 | Verify `info.md` contains testable contracts and a slice plan. |
-| 6 | Run `python3 .harness/scripts/task.py start <task-dir>`. |
-| 7 | Ask whether to enable 3-agent mode for execution. |
-| 8 | If confirmed, keep architect/tester/developer child agents available; otherwise spawn one role only when the phase needs it. |
-| 9 | For each slice: tester RED, developer GREEN, architect REVIEW, tester VALIDATE. |
-| 10 | Parent session verifies tests and owns git commits. |
-| 11 | Close child agents and archive the task. |
+| 2 | Mandatory grill-me before `task.py create`; confirm answers with the user. |
+| 3 | Run `python3 .harness/scripts/task.py create "<title>"`. |
+| 4 | Curate `context.architect.jsonl`, `context.developer.jsonl`, and `context.tester.jsonl`. |
+| 5 | Spawn `architect` to produce `info.md`. |
+| 6 | Verify `info.md` contains testable contracts and a slice plan. |
+| 7 | Run `python3 .harness/scripts/task.py start <task-dir>`. |
+| 8 | Ask whether to enable 3-agent mode for execution. |
+| 9 | If confirmed, keep architect/tester/developer child agents available; otherwise spawn one role only when the phase needs it. |
+| 10 | For each slice: tester RED, developer GREEN, architect REVIEW, tester VALIDATE. |
+| 11 | Parent session verifies tests and owns git commits. |
+| 12 | Close child agents and archive the task. |
 
 ## Codex Agent Dispatch
 
@@ -1443,6 +1482,7 @@ research/*.md for architect
 ## Required Checks
 
 - Curate all three context manifests before `task.py start`.
+- Run Mandatory grill-me before `task.py create`.
 - Use role names in Codex `task_name` values.
 - Ask for execution-mode confirmation before opening three role agents.
 - Verify tests in the parent session before calling a slice complete.
@@ -1474,7 +1514,7 @@ Hooks at `.claude/hooks/harness-*.py` inject context every session/turn.
 
 | Phase | Status | Sequence (order matters) |
 | --- | --- | --- |
-| Plan | `planning` | confirm project-root design doc → (optional) research → **curate 3 manifests** → architect writes info.md → `task.py start` |
+| Plan | `planning` | confirm project-root design doc → **Mandatory grill-me before `task.py create`** → (optional) research → **curate 3 manifests** → architect writes info.md → `task.py start` |
 | Execute | `in_progress` | confirm execution mode → **TDD cycle**: tester(RED) → developer(GREEN) → architect(REVIEW/REFACTOR) → tester(VALIDATE) → main session commits |
 | Done | `archived` | `/harness:finish` writes `summary.md` and moves task to archive/ |
 
@@ -1493,6 +1533,13 @@ The per-turn `<workflow-state>` breadcrumb tells you the current phase. **Trust 
 To check active task: `python3 .harness/scripts/task.py current`
 To create a new task: `python3 .harness/scripts/task.py create "<title>"`
 To activate planning → in_progress: `python3 .harness/scripts/task.py start <dir>`
+
+## Requirement Confirmation
+
+Run `grill-me` before `task.py create` for every harness implementation request.
+Ask one question at a time. If codebase inspection can answer a question,
+inspect the codebase instead of asking. Proceed only after the design source and
+grill-me answers are confirmed.
 
 ## Agent Roles (3 — dispatched via Task/Agent tool)
 

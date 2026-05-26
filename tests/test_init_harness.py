@@ -62,6 +62,19 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertTrue((harness / "tasks").is_dir())
         self.assertTrue((harness / "runtime" / "sessions").is_dir())
 
+    def test_workflow_requires_grill_me_before_task_create(self):
+        """Workflow requires grill-me before creating a harness task."""
+        self._run_init()
+
+        workflow = (
+            self.project_dir
+            / ".harness"
+            / "workflow.md"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("Mandatory grill-me", workflow)
+        self.assertIn("before `task.py create`", workflow)
+
     def test_creates_claude_hooks(self):
         """After init, .claude/hooks/ has 3 harness-prefixed hook scripts."""
         self._run_init()
@@ -247,6 +260,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertTrue(skill_path.is_file(), "DeepSeek harness-implement SKILL.md not created")
         content = skill_path.read_text(encoding="utf-8")
         self.assertIn("name: harness-implement", content)
+        self.assertIn("Mandatory grill-me", content)
 
     def test_creates_deepseek_grill_me_skill(self):
         """After init, ~/.deepseek/skills/grill-me/SKILL.md exists."""
@@ -280,6 +294,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertIn("spawn_agent", content)
         self.assertIn(".codex/hooks.json", content)
         self.assertIn("execution-mode confirmation", content)
+        self.assertIn("Mandatory grill-me", content)
 
     def test_deepseek_harness_skill_uses_context_script_and_agents(self):
         """DeepSeek harness skill uses explicit context.py plus agent_open."""
@@ -297,6 +312,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertIn(".harness/scripts/context.py", content)
         self.assertIn("agent_open", content)
         self.assertIn("3-agent mode", content)
+        self.assertIn("Mandatory grill-me", content)
         self.assertNotIn("TeamCreate", content)
 
     def test_does_not_overwrite_existing_deepseek_skill(self):
@@ -397,6 +413,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
             "info.md",
             "bypassPermissions",
             "execution-mode confirm",
+            "Mandatory grill-me",
         ):
             self.assertIn(keyword, content, f"skill body missing key concept: {keyword}")
 
