@@ -20,6 +20,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+LOCAL_CONTEXT_KEY = "local"
+
 
 def _find_harness_root() -> Path:
     """Walk up from cwd to find .harness/ directory."""
@@ -40,7 +42,7 @@ def _find_harness_root() -> Path:
 
 def _context_key() -> str | None:
     """Get session context key from environment."""
-    return os.environ.get("HARNESS_CONTEXT_ID")
+    return os.environ.get("HARNESS_CONTEXT_ID") or LOCAL_CONTEXT_KEY
 
 
 def _session_path(harness: Path, key: str) -> Path:

@@ -31,6 +31,20 @@ def _run_task(project_dir: Path, *args: str) -> subprocess.CompletedProcess:
     )
 
 
+def _run_task_without_session(project_dir: Path, *args: str) -> subprocess.CompletedProcess:
+    """Run task.py without HARNESS_CONTEXT_ID, matching Codex shell behavior."""
+    task_script = project_dir / ".harness" / "scripts" / "task.py"
+    env = os.environ.copy()
+    env.pop("HARNESS_CONTEXT_ID", None)
+    return subprocess.run(
+        [sys.executable, str(task_script), *args],
+        capture_output=True,
+        text=True,
+        cwd=str(project_dir),
+        env=env,
+    )
+
+
 class TestTaskCreate(unittest.TestCase):
     """task.py create produces a task directory with correct initial state."""
 
@@ -258,6 +272,20 @@ class TestTaskCurrent(unittest.TestCase):
         result = _run_task(self.project_dir, "current")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Active work", result.stdout)
+
+    def test_current_uses_local_session_when_context_id_missing(self):
+        """Codex shell commands have no HARNESS_CONTEXT_ID, so task.py uses local session."""
+        create = _run_task_without_session(self.project_dir, "create", "Codex active work")
+        self.assertEqual(create.returncode, 0, create.stderr)
+
+        session_file = (
+            self.project_dir / ".harness" / "runtime" / "sessions" / "local.json"
+        )
+        self.assertTrue(session_file.is_file())
+
+        current = _run_task_without_session(self.project_dir, "current")
+        self.assertEqual(current.returncode, 0, current.stderr)
+        self.assertIn("Codex active work", current.stdout)
 
 
 if __name__ == "__main__":

@@ -100,6 +100,21 @@ class TestWorkflowStateHook(unittest.TestCase):
         self.assertIn("in_progress", ctx)
         self.assertIn("Dispatch developer", ctx)
 
+    def test_unique_in_progress_task_emits_in_progress_without_session(self):
+        """Codex may omit session_id; a single in_progress task is enough context."""
+        harness = self.project_dir / ".harness"
+        task_dir = harness / "tasks" / "05-19-codex-work"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.json").write_text(
+            json.dumps({"status": "in_progress", "title": "Codex work"}),
+            encoding="utf-8",
+        )
+
+        output = _run_hook(self.hook_path, {"cwd": str(self.project_dir)})
+        ctx = output.get("hookSpecificOutput", {}).get("additionalContext", "")
+        self.assertIn("in_progress", ctx)
+        self.assertIn("Dispatch developer", ctx)
+
 
 class TestSessionStartHook(unittest.TestCase):
     """session-start hook injects active task info and role list."""
@@ -147,6 +162,21 @@ class TestSessionStartHook(unittest.TestCase):
         )
         ctx = output.get("hookSpecificOutput", {}).get("additionalContext", "")
         self.assertIn("Build feature", ctx)
+        self.assertIn("in_progress", ctx)
+
+    def test_includes_unique_in_progress_task_without_session(self):
+        """SessionStart still shows the active task when Codex omits session_id."""
+        harness = self.project_dir / ".harness"
+        task_dir = harness / "tasks" / "05-19-codex-feature"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.json").write_text(
+            json.dumps({"status": "in_progress", "title": "Codex feature"}),
+            encoding="utf-8",
+        )
+
+        output = _run_hook(self.hook_path, {"cwd": str(self.project_dir)})
+        ctx = output.get("hookSpecificOutput", {}).get("additionalContext", "")
+        self.assertIn("Codex feature", ctx)
         self.assertIn("in_progress", ctx)
 
     def test_exports_context_id_to_claude_env_file(self):
@@ -386,6 +416,34 @@ class TestInjectContextHookAllRoles(unittest.TestCase):
         self.assertIn("Feature A", message)
         self.assertIn("Use PostgreSQL", message)
         self.assertIn("VALIDATE phase. Add edge cases.", message)
+
+    def test_codex_spawn_agent_uses_unique_in_progress_task_without_session(self):
+        """Codex spawn_agent gets context even when no session pointer exists."""
+        session_file = (
+            self.project_dir
+            / ".harness"
+            / "runtime"
+            / "sessions"
+            / "sess-1.json"
+        )
+        session_file.unlink()
+
+        output = _run_hook(self.hook_path, {
+            "cwd": str(self.project_dir),
+            "tool_name": "spawn_agent",
+            "tool_input": {
+                "task_name": "harness_developer",
+                "agent_type": "worker",
+                "message": "GREEN phase. Build it.",
+            },
+        })
+
+        updated = output.get("hookSpecificOutput", {}).get("updatedInput", {})
+        message = updated.get("message", "")
+        self.assertIn("Use TypeScript", message)
+        self.assertIn("Feature A", message)
+        self.assertIn("Use PostgreSQL", message)
+        self.assertIn("GREEN phase. Build it.", message)
 
 
 if __name__ == "__main__":

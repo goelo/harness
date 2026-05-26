@@ -19,8 +19,11 @@ kept as a compatibility fallback for older task packages.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
+
+LOCAL_CONTEXT_KEY = "local"
 
 # All three roles follow the standard pattern:
 #   task package docs + info.md + context.<role>.jsonl manifest
@@ -81,6 +84,9 @@ def resolve_session_key(data: dict) -> str | None:
         val = data.get(key)
         if isinstance(val, str) and val.strip():
             return val.strip()
+    env_key = os.environ.get("HARNESS_CONTEXT_ID")
+    if env_key:
+        return env_key
     return None
 
 
@@ -90,19 +96,29 @@ def get_active_task_dir(root: Path, data: dict) -> Path | None:
         return None
 
     key = resolve_session_key(data)
-    session_file = None
     if key:
         candidate = sessions_dir / f"{key}.json"
         if candidate.is_file():
-            session_file = candidate
-    else:
-        files = list(sessions_dir.glob("*.json"))
-        if len(files) == 1:
-            session_file = files[0]
+            task_dir = task_dir_from_session_file(root, candidate)
+            if task_dir:
+                return task_dir
 
-    if not session_file:
-        return None
+    local_session = sessions_dir / f"{LOCAL_CONTEXT_KEY}.json"
+    if local_session.is_file():
+        task_dir = task_dir_from_session_file(root, local_session)
+        if task_dir:
+            return task_dir
 
+    files = list(sessions_dir.glob("*.json"))
+    if len(files) == 1:
+        task_dir = task_dir_from_session_file(root, files[0])
+        if task_dir:
+            return task_dir
+
+    return unique_in_progress_task_dir(root)
+
+
+def task_dir_from_session_file(root: Path, session_file: Path) -> Path | None:
     session = json.loads(session_file.read_text(encoding="utf-8"))
     task_ref = session.get("current_task")
     if not task_ref:
@@ -110,6 +126,26 @@ def get_active_task_dir(root: Path, data: dict) -> Path | None:
 
     task_dir = root / task_ref
     return task_dir if task_dir.is_dir() else None
+
+
+def unique_in_progress_task_dir(root: Path) -> Path | None:
+    tasks_dir = root / ".harness" / "tasks"
+    if not tasks_dir.is_dir():
+        return None
+    candidates = []
+    for task_dir in tasks_dir.iterdir():
+        if not task_dir.is_dir() or task_dir.name == "archive":
+            continue
+        task_json = task_dir / "task.json"
+        if not task_json.is_file():
+            continue
+        try:
+            data = json.loads(task_json.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if data.get("status") == "in_progress":
+            candidates.append(task_dir)
+    return candidates[0] if len(candidates) == 1 else None
 
 
 def read_file_safe(path: Path) -> str:

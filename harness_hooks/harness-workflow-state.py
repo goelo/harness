@@ -7,9 +7,12 @@ Reads active task from session pointer, resolves status, and parses
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
+
+LOCAL_CONTEXT_KEY = "local"
 
 _TAG_RE = re.compile(
     r"\[workflow-state:([A-Za-z0-9_-]+)\]\s*\n(.*?)\n\s*\[/workflow-state:\1\]",
@@ -39,6 +42,9 @@ def resolve_session_key(data: dict) -> str | None:
         val = data.get(key)
         if isinstance(val, str) and val.strip():
             return val.strip()
+    env_key = os.environ.get("HARNESS_CONTEXT_ID")
+    if env_key:
+        return env_key
     return None
 
 
@@ -58,6 +64,13 @@ def get_active_task(root: Path, data: dict) -> tuple[str | None, str | None]:
             if task_ref:
                 return _resolve_task_status(root, task_ref)
 
+    local_session = sessions_dir / f"{LOCAL_CONTEXT_KEY}.json"
+    if local_session.is_file():
+        session = json.loads(local_session.read_text(encoding="utf-8"))
+        task_ref = session.get("current_task")
+        if task_ref:
+            return _resolve_task_status(root, task_ref)
+
     # Fallback: if exactly one session file exists
     files = list(sessions_dir.glob("*.json"))
     if len(files) == 1:
@@ -65,6 +78,10 @@ def get_active_task(root: Path, data: dict) -> tuple[str | None, str | None]:
         task_ref = session.get("current_task")
         if task_ref:
             return _resolve_task_status(root, task_ref)
+
+    unique_task = _unique_in_progress_task(root)
+    if unique_task:
+        return _resolve_task_status(root, unique_task)
 
     return None, None
 
@@ -78,6 +95,26 @@ def _resolve_task_status(root: Path, task_ref: str) -> tuple[str | None, str | N
         return task_ref, "unknown"
     data = json.loads(task_json.read_text(encoding="utf-8"))
     return task_ref, data.get("status", "unknown")
+
+
+def _unique_in_progress_task(root: Path) -> str | None:
+    tasks_dir = root / ".harness" / "tasks"
+    if not tasks_dir.is_dir():
+        return None
+    candidates = []
+    for task_dir in tasks_dir.iterdir():
+        if not task_dir.is_dir() or task_dir.name == "archive":
+            continue
+        task_json = task_dir / "task.json"
+        if not task_json.is_file():
+            continue
+        try:
+            data = json.loads(task_json.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if data.get("status") == "in_progress":
+            candidates.append(f".harness/tasks/{task_dir.name}")
+    return candidates[0] if len(candidates) == 1 else None
 
 
 def build_breadcrumb(task_ref: str | None, status: str, body: str) -> str:
