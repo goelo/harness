@@ -184,6 +184,7 @@ def create_harness_skeleton(target: Path) -> None:
 
     _write_if_missing(harness / "workflow.md", WORKFLOW_MD)
     _write_if_missing(harness / "spec" / "index.md", SPEC_INDEX_MD)
+    _write_if_missing(harness / "verify.json", VERIFY_JSON_TEMPLATE)
 
     # Deploy real scripts from sibling harness_scripts/ when available
     src_scripts = Path(__file__).parent / "harness_scripts"
@@ -191,6 +192,7 @@ def create_harness_skeleton(target: Path) -> None:
         "task.py": TASK_PY_STUB,
         "team_cleanup.py": TEAM_CLEANUP_STUB,
         "context.py": CONTEXT_PY_STUB,
+        "verify.py": VERIFY_PY_STUB,
     }
     for filename, stub in script_files.items():
         real = src_scripts / filename
@@ -387,7 +389,8 @@ Task is in planning. Required steps in this exact order:
      Each file MUST have at least one row with a `file` field
      (not just the `_example` seed row).
 
-  5. Dispatch `architect` agent → writes `info.md` (now has spec via manifest).
+  5. Dispatch `architect` agent → writes `info.md` and `scope.json`
+     (now has spec via manifest).
 
   6. (Optional) Refine manifests if architect's design uncovers needs not yet in manifests.
 
@@ -447,7 +450,9 @@ between each:
   3. SendMessage(to: "architect", message: "REVIEW phase. Slice N. Refactor + verify design conformance.")
   4. SendMessage(to: "tester",    message: "VALIDATE phase. Slice N. Add edge case tests.")
 
-After all 4 idle: main session commits.
+After all 4 idle: main session runs `python3 .harness/scripts/verify.py all`.
+If verification fails, fix failures before any commit. If verification passes,
+main session commits.
 
 In main-session mode, perform the same TDD order without creating the 3
 persistent teammates. Use a one-off sub-agent only when the current phase needs
@@ -499,6 +504,30 @@ CONTEXT_PY_STUB = """\
 import sys
 print("context.py: real implementation not deployed", file=sys.stderr)
 sys.exit(1)
+"""
+
+VERIFY_PY_STUB = """\
+#!/usr/bin/env python3
+\"\"\"verify.py — placeholder. Real implementation in harness_scripts/.\"\"\"
+import sys
+print("verify.py: real implementation not deployed", file=sys.stderr)
+sys.exit(1)
+"""
+
+VERIFY_JSON_TEMPLATE = """\
+{
+  "commands": {
+    "lint": "",
+    "type": "",
+    "test": "",
+    "coverage": ""
+  },
+  "scope": {
+    "denied": [
+      ".harness/runtime/**"
+    ]
+  }
+}
 """
 
 GITIGNORE_TEMPLATE = """\
@@ -787,6 +816,7 @@ describing product + constraints. Read it, don't rewrite it.
 
 **Outputs by phase**:
 1. **Plan phase** → write `info.md` (technical breakdown with testable contracts)
+   and `scope.json` (allowed/denied file change scope for this task)
 2. **Execute phase, REVIEW step** → review developer's diff vs info.md, refactor for
    clarity, DM developer if changes needed
 3. **Execute phase, RE-ENGAGE** → when tester or developer flags design deviation,
@@ -807,12 +837,27 @@ You persist across slices. Before each task message, **re-read the project-root
 design doc and your prior info.md** — they may have evolved. When you UPDATE
 info.md mid-execution, SendMessage developer + tester so they re-read.
 
-## info.md structure (in order)
+## Plan outputs
+
+Write `info.md` with this structure:
 
 1. **Module breakdown** — files/packages, dependency direction, naming
 2. **Interface contracts** (testable — see below)
 3. **Slice order** — which slice first, what each unlocks
 4. **Risks / trade-offs**
+
+Also write `scope.json` in the same task directory:
+
+```json
+{
+  "allowed": ["src/**", "tests/**"],
+  "denied": []
+}
+```
+
+`allowed` must list the file or directory globs this task is expected to modify.
+`denied` lists task-specific exclusions. The main session verifies this file
+with `python3 .harness/scripts/verify.py all` before each slice commit.
 
 ## Interface contracts MUST be testable
 
@@ -855,6 +900,7 @@ Good: list only formula; tester computes expected during RED phase.
 - Do NOT modify tests (tester's domain)
 - Do NOT run git commit
 - Tests must pass before AND after every refactor step
+- Keep `scope.json` current if the approved slice plan changes
 """
 
 AGENT_DEVELOPER = """\
@@ -996,9 +1042,9 @@ description: |
 
 Walks the AI through the full v1.6 harness TDD flow:
 read user's design doc → **Mandatory grill-me** before task creation → architect
-produces info.md → confirm execution mode → per-slice TDD cycle (tester RED →
-developer GREEN → architect REVIEW → tester VALIDATE) → archive. Three-agent
-Teams mode is opt-in per task.
+produces info.md and scope.json → confirm execution mode → per-slice TDD cycle
+(tester RED → developer GREEN → architect REVIEW → tester VALIDATE) →
+`verify.py all` → archive. Three-agent Teams mode is opt-in per task.
 
 ## When to Use
 
@@ -1032,7 +1078,7 @@ confirmed.
 | 2 | Mandatory grill-me before `task.py create`; confirm answers with user | **YES — wait for confirm** |
 | 3 | `task.py create "<title>"` | — |
 | 4 | Curate 3 manifests (architect/developer/tester) | — |
-| 5 | Dispatch `architect` → produces `info.md` | — |
+| 5 | Dispatch `architect` → produces `info.md` and `scope.json` | — |
 | 6 | Verify info.md has testable contracts + slice plan | — |
 | 7 | Sync slice plan with user | **YES — wait for confirm** |
 | 8 | `task.py start <task-dir>` | — |
@@ -1040,7 +1086,7 @@ confirmed.
 | 9a | If confirmed: `TeamCreate(...)` + spawn 3 persistent teammates | — |
 | 9b | If not confirmed: keep execution in main session, dispatch one role only when needed | — |
 | 10 | Per slice: tester(RED) → developer → architect(REVIEW) → tester(VALIDATE) | per-slice **YES** |
-| 11 | Main session commits the slice | — |
+| 11 | Run `python3 .harness/scripts/verify.py all`, then main session commits the slice | — |
 | 12 | Repeat 10-11 for remaining slices | — |
 | 13 | If Teams mode was enabled: TeamDelete + team_cleanup.py. Then `task.py archive <task-dir>` | — |
 
@@ -1092,7 +1138,8 @@ Agent(
   mode: "bypassPermissions",
   prompt: "Read the project-root design doc and produce info.md with:
            (1) module breakdown, (2) testable interface contracts,
-           (3) slice order, (4) risks."
+           (3) slice order, (4) risks. Also write scope.json with
+           allowed/denied file globs for this task."
 )
 ```
 
@@ -1153,11 +1200,12 @@ SendMessage(to: "tester",    message: "VALIDATE phase. Slice N. Add edge case te
 # wait for idle
 ```
 
-**Before commit**: invoke `superpowers:verification-before-completion` if available,
-or at minimum run the project's test suite manually and confirm GREEN. Don't claim
-slice done without verification evidence.
+**Before commit**: run `python3 .harness/scripts/verify.py all`. This executes
+lint, type checks, tests, coverage, and file change scope checks from
+`.harness/verify.json` plus the current task's `scope.json`.
 
-After all 4 idle, summarize to user, then main session runs `git add` + `git commit`.
+If `verify.py all` fails, fix the reported failures before any commit. After it
+passes, summarize to user, then main session runs `git add` + `git commit`.
 
 For slice N in main-session mode, preserve the same phase order. The main
 session may implement small, low-risk phases directly, but it should dispatch
@@ -1185,6 +1233,7 @@ python3 .harness/scripts/task.py archive <task-dir>
 
 - **Wait at user checkpoints** (PRD confirm, slice plan confirm, execution-mode confirm, per-slice review)
 - **Run Mandatory grill-me before `task.py create`** for every harness implementation request
+- **Run `python3 .harness/scripts/verify.py all` before every slice commit**
 - **Pass `mode: "bypassPermissions"`** on EVERY Agent call
 - **Do not spawn 3 execution teammates by default.** Teams mode requires explicit
   user confirmation after `task.py start`.
@@ -1202,6 +1251,7 @@ python3 .harness/scripts/task.py archive <task-dir>
 |---------|-----|
 | Rewriting user's design doc | Don't. Hooks read it directly from project root — the doc IS the PRD. |
 | Skipping Mandatory grill-me | Stop and run grill-me before `task.py create` or before any further planning work |
+| Skipping `verify.py all` before commit | Stop and run the full verification script before staging or committing |
 | Skipping manifest curation | task.py start gate will reject — curate first |
 | Architect produces vague info.md | Reject and re-dispatch with explicit "testable contracts" requirement |
 | Sub-agent runs git commit | Stop it. Only main session commits. |
@@ -1267,13 +1317,13 @@ The architect role turns it into testable technical contracts in `info.md`.
 | 2 | Mandatory grill-me before `task.py create`; confirm answers with the user. |
 | 3 | Run `python3 .harness/scripts/task.py create "<title>"`. |
 | 4 | Curate `context.architect.jsonl`, `context.developer.jsonl`, and `context.tester.jsonl`. |
-| 5 | Build architect context with `context.py`, then open an architect child session to write `info.md`. |
+| 5 | Build architect context with `context.py`, then open an architect child session to write `info.md` and `scope.json`. |
 | 6 | Verify `info.md` contains testable contracts and a slice plan. |
 | 7 | Run `python3 .harness/scripts/task.py start <task-dir>`. |
 | 8 | Ask whether to enable 3-agent mode for execution. |
 | 9 | If confirmed, keep architect/tester/developer child sessions open; otherwise open role sessions only when a phase needs them. |
 | 10 | For every slice, run tester RED, developer GREEN, architect REVIEW, tester VALIDATE. |
-| 11 | Parent session verifies tests and owns git commits. |
+| 11 | Parent session runs `python3 .harness/scripts/verify.py all` and owns git commits. |
 | 12 | Close child sessions and archive the task. |
 
 ## Context Commands
@@ -1342,6 +1392,7 @@ then close or leave it idle only when the next phase will reuse it immediately.
 
 - Curate all three context manifests before `task.py start`.
 - Run Mandatory grill-me before `task.py create`.
+- Run `python3 .harness/scripts/verify.py all` before every slice commit.
 - Include `context.py` output in every DeepSeek child-session prompt.
 - Keep role write boundaries explicit in each `agent_open` prompt.
 - Verify tests in the parent session before calling a slice complete.
@@ -1401,13 +1452,13 @@ scripts.
 | 2 | Mandatory grill-me before `task.py create`; confirm answers with the user. |
 | 3 | Run `python3 .harness/scripts/task.py create "<title>"`. |
 | 4 | Curate `context.architect.jsonl`, `context.developer.jsonl`, and `context.tester.jsonl`. |
-| 5 | Spawn `architect` to produce `info.md`. |
+| 5 | Spawn `architect` to produce `info.md` and `scope.json`. |
 | 6 | Verify `info.md` contains testable contracts and a slice plan. |
 | 7 | Run `python3 .harness/scripts/task.py start <task-dir>`. |
 | 8 | Ask whether to enable 3-agent mode for execution. |
 | 9 | If confirmed, keep architect/tester/developer child agents available; otherwise spawn one role only when the phase needs it. |
 | 10 | For each slice: tester RED, developer GREEN, architect REVIEW, tester VALIDATE. |
-| 11 | Parent session verifies tests and owns git commits. |
+| 11 | Parent session runs `python3 .harness/scripts/verify.py all` and owns git commits. |
 | 12 | Close child agents and archive the task. |
 
 ## Codex Agent Dispatch
@@ -1483,6 +1534,7 @@ research/*.md for architect
 
 - Curate all three context manifests before `task.py start`.
 - Run Mandatory grill-me before `task.py create`.
+- Run `python3 .harness/scripts/verify.py all` before every slice commit.
 - Use role names in Codex `task_name` values.
 - Ask for execution-mode confirmation before opening three role agents.
 - Verify tests in the parent session before calling a slice complete.
@@ -1514,8 +1566,8 @@ Hooks at `.claude/hooks/harness-*.py` inject context every session/turn.
 
 | Phase | Status | Sequence (order matters) |
 | --- | --- | --- |
-| Plan | `planning` | confirm project-root design doc → **Mandatory grill-me before `task.py create`** → (optional) research → **curate 3 manifests** → architect writes info.md → `task.py start` |
-| Execute | `in_progress` | confirm execution mode → **TDD cycle**: tester(RED) → developer(GREEN) → architect(REVIEW/REFACTOR) → tester(VALIDATE) → main session commits |
+| Plan | `planning` | confirm project-root design doc → **Mandatory grill-me before `task.py create`** → (optional) research → **curate 3 manifests** → architect writes info.md + scope.json → `task.py start` |
+| Execute | `in_progress` | confirm execution mode → **TDD cycle**: tester(RED) → developer(GREEN) → architect(REVIEW/REFACTOR) → tester(VALIDATE) → `verify.py all` → main session commits |
 | Done | `archived` | `/harness:finish` writes `summary.md` and moves task to archive/ |
 
 **Why curate before architect**: architect reads `context.architect.jsonl` to see
@@ -1550,6 +1602,8 @@ grill-me answers are confirmed.
 | `tester` | RED + VALIDATE | project-root design, info.md, manifest | failing tests + edge case tests |
 
 **No sub-agent commits.** Main session commits after the slice's TDD cycle is GREEN.
+Main session must run `python3 .harness/scripts/verify.py all` before every
+slice commit.
 **Only tester modifies tests.** developer + architect must not touch test files.
 
 ## Decision Tree

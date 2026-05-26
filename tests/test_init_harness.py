@@ -59,8 +59,43 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertTrue((harness / "spec" / "index.md").is_file())
         self.assertTrue((harness / "scripts").is_dir())
         self.assertTrue((harness / "scripts" / "task.py").is_file())
+        self.assertTrue((harness / "scripts" / "verify.py").is_file())
+        self.assertTrue((harness / "verify.json").is_file())
         self.assertTrue((harness / "tasks").is_dir())
         self.assertTrue((harness / "runtime" / "sessions").is_dir())
+
+    def test_verify_config_template_has_required_sections(self):
+        """After init, .harness/verify.json contains command and scope template keys."""
+        self._run_init()
+
+        config = json.loads((self.project_dir / ".harness" / "verify.json").read_text())
+
+        self.assertEqual(
+            sorted(config.get("commands", {}).keys()),
+            ["coverage", "lint", "test", "type"],
+        )
+        self.assertIn("denied", config.get("scope", {}))
+
+    def test_does_not_overwrite_existing_verify_config(self):
+        """If .harness/verify.json exists, init preserves project configuration."""
+        harness = self.project_dir / ".harness"
+        harness.mkdir()
+        existing = {
+            "commands": {
+                "lint": "custom lint",
+                "type": "custom type",
+                "test": "custom test",
+                "coverage": "custom coverage",
+            },
+            "scope": {"denied": ["custom/**"]},
+        }
+        (harness / "verify.json").write_text(json.dumps(existing), encoding="utf-8")
+
+        self._run_init()
+
+        config = json.loads((harness / "verify.json").read_text())
+        self.assertEqual(config["commands"]["lint"], "custom lint")
+        self.assertEqual(config["scope"]["denied"], ["custom/**"])
 
     def test_workflow_requires_grill_me_before_task_create(self):
         """Workflow requires grill-me before creating a harness task."""
@@ -261,6 +296,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         content = skill_path.read_text(encoding="utf-8")
         self.assertIn("name: harness-implement", content)
         self.assertIn("Mandatory grill-me", content)
+        self.assertIn("verify.py all", content)
 
     def test_creates_deepseek_grill_me_skill(self):
         """After init, ~/.deepseek/skills/grill-me/SKILL.md exists."""
@@ -295,6 +331,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertIn(".codex/hooks.json", content)
         self.assertIn("execution-mode confirmation", content)
         self.assertIn("Mandatory grill-me", content)
+        self.assertIn("verify.py all", content)
 
     def test_deepseek_harness_skill_uses_context_script_and_agents(self):
         """DeepSeek harness skill uses explicit context.py plus agent_open."""
@@ -313,6 +350,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertIn("agent_open", content)
         self.assertIn("3-agent mode", content)
         self.assertIn("Mandatory grill-me", content)
+        self.assertIn("verify.py all", content)
         self.assertNotIn("TeamCreate", content)
 
     def test_does_not_overwrite_existing_deepseek_skill(self):
@@ -409,6 +447,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
             "tester",
             "TeamCreate",
             "task.py start",
+            "verify.py all",
             "context.architect.jsonl",
             "info.md",
             "bypassPermissions",
@@ -477,6 +516,15 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertTrue(script.is_file(), "context.py not created")
         content = script.read_text(encoding="utf-8")
         self.assertIn("Build role-specific harness context", content)
+
+    def test_creates_verify_script(self):
+        """init deploys verify.py for commit-time quality gates."""
+        self._run_init()
+
+        script = self.project_dir / ".harness" / "scripts" / "verify.py"
+        self.assertTrue(script.is_file(), "verify.py not created")
+        content = script.read_text(encoding="utf-8")
+        self.assertIn("Run harness quality checks", content)
 
     def test_context_script_outputs_role_context(self):
         """context.py emits task docs, manifest files, info.md, and prompt."""
