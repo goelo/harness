@@ -101,17 +101,18 @@ design.md 就是你的产品需求文档(也叫 spec.md / requirements.md,harnes
 - "用 harness 实现这份设计"
 - "follow the harness flow"
 
-skill 会自动加载,接管整套 TDD + Teams 流程。
+skill 会自动加载,接管整套 TDD 流程。3 子代理 Teams 模式会在执行前单独确认,不会默认启动。
 
-### 3. 在 3 个 checkpoint 出场
+### 3. 在 4 个 checkpoint 出场
 
 | # | 时机 | 你做什么 |
 |---|-----|---------|
 | 1 | design.md 确认完后 | 这份 spec 准不准?要补什么? |
 | 2 | architect 切完 slice 后 | 5 个 slice 顺序你 OK 吗?哪几个砍掉? |
-| 3 | 每个 slice 完成后 | 测试全过吗?代码量合理吗?commit? |
+| 3 | task.py start 后 | 是否启用 3 子代理 Teams 模式? |
+| 4 | 每个 slice 完成后 | 测试全过吗?代码量合理吗?commit? |
 
-其他时间 AI 自己跑,你做你自己的事。
+未启用 3 子代理 Teams 模式时,主会话按同样 TDD 顺序推进,只在某个阶段确实需要角色上下文时临时调用对应子代理。
 
 ---
 
@@ -148,12 +149,14 @@ skill 会自动加载,接管整套 TDD + Teams 流程。
 6.  验证 info.md 包含可测契约
 7.  ★ checkpoint 2: 跟用户确认 slice 计划
 8.  task.py start (Phase 1.3 gate 检查 manifest)
-9.  TeamCreate + 派 3 个持久 teammate
+9.  ★ checkpoint 3: 确认是否启用 3 子代理 Teams 模式
+9a. 确认启用后:TeamCreate + 派 3 个持久 teammate
+9b. 未启用时:主会话推进,按需临时调用单个角色
 10. 每个 slice: tester(RED) → developer → architect(REVIEW) → tester(VALIDATE)
-                ★ checkpoint 3: 用户 review
+                ★ checkpoint 4: 用户 review
 11. 主会话 commit
 12. 重复 10-11 直到所有 slice 完成
-13. TeamDelete + team_cleanup.py + task.py archive
+13. 启用 Teams 模式时先 TeamDelete + team_cleanup.py,然后 task.py archive
 ```
 
 ---

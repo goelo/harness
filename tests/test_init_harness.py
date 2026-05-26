@@ -279,6 +279,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertIn("name: harness-implement", content)
         self.assertIn("spawn_agent", content)
         self.assertIn(".codex/hooks.json", content)
+        self.assertIn("execution-mode confirmation", content)
 
     def test_deepseek_harness_skill_uses_context_script_and_agents(self):
         """DeepSeek harness skill uses explicit context.py plus agent_open."""
@@ -295,6 +296,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertIn("DeepSeek TUI does not receive Claude Code hook events", content)
         self.assertIn(".harness/scripts/context.py", content)
         self.assertIn("agent_open", content)
+        self.assertIn("3-agent mode", content)
         self.assertNotIn("TeamCreate", content)
 
     def test_does_not_overwrite_existing_deepseek_skill(self):
@@ -394,6 +396,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
             "context.architect.jsonl",
             "info.md",
             "bypassPermissions",
+            "execution-mode confirm",
         ):
             self.assertIn(keyword, content, f"skill body missing key concept: {keyword}")
 

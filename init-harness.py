@@ -388,14 +388,23 @@ without team conventions. Manifest curation must precede ALL sub-agent dispatch.
 [/workflow-state:planning]
 
 [workflow-state:in_progress]
-Task is active. **TDD is the default workflow** (red-green-refactor) with 3 teammates.
-**Sub-agents are dispatched via Claude Agent Teams** (not plain Task tool).
+Task is active. **TDD is the default workflow** (red-green-refactor).
+**Do not create 3 persistent teammates by default.** Main session must first
+ask the user whether to enable 3-teammate Teams mode for this task.
 
-## Bootstrap once per task (right after task.py start)
+## Confirm execution mode once per task (right after task.py start)
+
+Return to the user with the slice plan and ask whether to enable 3-teammate
+Teams mode. Use Teams mode only after explicit confirmation.
+
+If confirmed, bootstrap once:
 
   TeamCreate(team_name: "<task-slug>", description: "<task title>")
 
 This creates a shared TaskList visible to all teammates. Main session = team lead.
+
+If not confirmed, keep execution in the main session and dispatch individual
+roles only when a phase actually needs a specialist.
 
 ## Permission mode for all sub-agent calls
 
@@ -403,9 +412,9 @@ If main session was started with `--dangerously-skip-permissions` (autonomous mo
 ALL Agent / SendMessage calls MUST pass `mode: "bypassPermissions"` so sub-agents
 don't stall on approval prompts.
 
-## Spawn 3 execution teammates ONCE
+## Confirmed Teams mode: spawn 3 execution teammates ONCE
 
-Right after TeamCreate, spawn 3 persistent teammates (once for the whole task):
+After TeamCreate, spawn 3 persistent teammates once for the whole task:
 
   Agent(team_name, name: "architect", subagent_type: "architect", mode: "bypassPermissions", prompt: "Stand by ...")
   Agent(team_name, name: "developer", subagent_type: "developer", mode: "bypassPermissions", prompt: "Stand by ...")
@@ -414,7 +423,9 @@ Right after TeamCreate, spawn 3 persistent teammates (once for the whole task):
 The PreToolUse hook fires on each Agent call → injects PRD + info.md + role
 manifest into each teammate. Context persists across all subsequent SendMessage.
 
-## Per-slice TDD dispatch via SendMessage
+## Per-slice TDD dispatch
+
+In confirmed Teams mode, dispatch via SendMessage.
 
 For each implementation slice, send messages in TDD order, waiting for idle
 between each:
@@ -425,6 +436,11 @@ between each:
   4. SendMessage(to: "tester",    message: "VALIDATE phase. Slice N. Add edge case tests.")
 
 After all 4 idle: main session commits.
+
+In main-session mode, perform the same TDD order without creating the 3
+persistent teammates. Use a one-off sub-agent only when the current phase needs
+that role's specialist context, then return results to the main session before
+continuing.
 
 If design deviation: architect updates info.md and SendMessage developer + tester
 "info.md updated, please re-read".
@@ -966,9 +982,10 @@ description: |
 
 # Harness Implement
 
-Walks the AI through the full v1.6 harness TDD + Teams flow with 3 agents:
-read user's design doc → architect produces info.md → per-slice TDD cycle (tester
-RED → developer GREEN → architect REVIEW → tester VALIDATE) → archive.
+Walks the AI through the full v1.6 harness TDD flow:
+read user's design doc → architect produces info.md → confirm execution mode →
+per-slice TDD cycle (tester RED → developer GREEN → architect REVIEW → tester
+VALIDATE) → archive. Three-agent Teams mode is opt-in per task.
 
 ## When to Use
 
@@ -998,12 +1015,13 @@ The user's design doc IS the PRD. Do not rewrite it. Architect's job is
 | 6 | Verify info.md has testable contracts + slice plan | — |
 | 7 | Sync slice plan with user | **YES — wait for confirm** |
 | 8 | `task.py start <task-dir>` | — |
-| 9 | `TeamCreate(team_name: "<task-slug>", ...)` | — |
-| 9b | Spawn 3 persistent execution teammates (architect/developer/tester) | — |
-| 10 | Per slice: SendMessage tester(RED) → developer → architect(REVIEW) → tester(VALIDATE) | per-slice **YES** |
+| 9 | Ask whether to enable 3-agent Teams mode for execution | **YES — wait for confirm** |
+| 9a | If confirmed: `TeamCreate(...)` + spawn 3 persistent teammates | — |
+| 9b | If not confirmed: keep execution in main session, dispatch one role only when needed | — |
+| 10 | Per slice: tester(RED) → developer → architect(REVIEW) → tester(VALIDATE) | per-slice **YES** |
 | 11 | Main session commits the slice | — |
-| 12 | Repeat 10-11 for remaining slices (SAME teammates, no re-spawn) | — |
-| 13 | TeamDelete + team_cleanup.py + `task.py archive <task-dir>` | — |
+| 12 | Repeat 10-11 for remaining slices | — |
+| 13 | If Teams mode was enabled: TeamDelete + team_cleanup.py. Then `task.py archive <task-dir>` | — |
 
 ## Step Templates
 
@@ -1052,11 +1070,21 @@ Agent(
 )
 ```
 
-### 9-10b. Activate + bootstrap team
+### 9. Activate + confirm execution mode
 
 ```bash
 python3 .harness/scripts/task.py start <task-dir>
 ```
+
+Return to the user with:
+
+1. the confirmed slice list
+2. the expected test command
+3. a short recommendation on whether this task benefits from 3-agent Teams mode
+
+Proceed to TeamCreate only after the user explicitly confirms Teams mode.
+
+### 9a. Confirmed Teams mode: bootstrap team
 
 ```
 TeamCreate(team_name: "<task-slug>", description: "<task title>")
@@ -1075,9 +1103,15 @@ Agent(team_name: "<slug>", name: "tester", subagent_type: "tester",
 do it AFTER TeamCreate so tasks live in the team's shared TaskList (not orphaned
 in main session context).
 
+### 9b. Main-session mode
+
+Do not create TeamCreate or the 3 persistent teammates. Keep the same TDD order
+in the main session. Use a one-off role dispatch only when the current phase
+needs that specialist context, then bring the result back to the main session.
+
 ### 11. Per-slice TDD cycle (SendMessage)
 
-For slice N:
+For slice N in confirmed Teams mode:
 
 ```
 SendMessage(to: "tester",    message: "RED phase. Slice N: <X>. Write failing tests.")
@@ -1099,6 +1133,11 @@ slice done without verification evidence.
 
 After all 4 idle, summarize to user, then main session runs `git add` + `git commit`.
 
+For slice N in main-session mode, preserve the same phase order. The main
+session may implement small, low-risk phases directly, but it should dispatch
+`tester`, `developer`, or `architect` as a one-off specialist when the phase
+needs role-specific context.
+
 ### 14. Cleanup
 
 `TeamDelete` only removes the team config + worktree — **the actual sub-agent
@@ -1118,10 +1157,12 @@ python3 .harness/scripts/task.py archive <task-dir>
 
 ## Required Behaviors
 
-- **Wait at user checkpoints** (PRD confirm, slice plan confirm, per-slice review)
+- **Wait at user checkpoints** (PRD confirm, slice plan confirm, execution-mode confirm, per-slice review)
 - **Pass `mode: "bypassPermissions"`** on EVERY Agent call
-- **Spawn 3 execution teammates ONCE** at execute-phase start (step 10b). Reuse
-  via SendMessage for every slice.
+- **Do not spawn 3 execution teammates by default.** Teams mode requires explicit
+  user confirmation after `task.py start`.
+- **If Teams mode is confirmed**, spawn 3 execution teammates once and reuse
+  them via SendMessage for every slice.
 - **Sub-agents must NOT commit** — main session owns git
 - **Architect re-engagement**: if tester or developer flags design deviation, send
   architect a REVIEW message; it may update info.md and SendMessage affected
@@ -1137,6 +1178,7 @@ python3 .harness/scripts/task.py archive <task-dir>
 | Architect produces vague info.md | Reject and re-dispatch with explicit "testable contracts" requirement |
 | Sub-agent runs git commit | Stop it. Only main session commits. |
 | Forgetting `mode: "bypassPermissions"` | Sub-agent stalls on approval — pass mode every time |
+| Spawning 3 teammates without confirmation | Stop and ask for execution-mode confirmation |
 | Skipping tester(RED) | TDD violated. Only skip on trivial changes with explicit announcement. |
 | Trusting `TeamDelete` to kill processes | It doesn't. Run team_cleanup.py after. |
 """
@@ -1195,9 +1237,11 @@ The architect role turns it into testable technical contracts in `info.md`.
 | 4 | Build architect context with `context.py`, then open an architect child session to write `info.md`. |
 | 5 | Verify `info.md` contains testable contracts and a slice plan. |
 | 6 | Run `python3 .harness/scripts/task.py start <task-dir>`. |
-| 7 | For every slice, run tester RED, developer GREEN, architect REVIEW, tester VALIDATE. |
-| 8 | Parent session verifies tests and owns git commits. |
-| 9 | Close child sessions and archive the task. |
+| 7 | Ask whether to enable 3-agent mode for execution. |
+| 8 | If confirmed, keep architect/tester/developer child sessions open; otherwise open role sessions only when a phase needs them. |
+| 9 | For every slice, run tester RED, developer GREEN, architect REVIEW, tester VALIDATE. |
+| 10 | Parent session verifies tests and owns git commits. |
+| 11 | Close child sessions and archive the task. |
 
 ## Context Commands
 
@@ -1249,6 +1293,10 @@ Developer GREEN:
 
 Evaluate child sessions with `agent_eval` using `block: true` before continuing.
 Close finished role sessions with `agent_close`.
+
+Open all three role sessions only after the user confirms 3-agent mode. Without
+that confirmation, open a child session for the current role phase, evaluate it,
+then close or leave it idle only when the next phase will reuse it immediately.
 
 ## Role Boundaries
 
@@ -1317,9 +1365,11 @@ scripts.
 | 4 | Spawn `architect` to produce `info.md`. |
 | 5 | Verify `info.md` contains testable contracts and a slice plan. |
 | 6 | Run `python3 .harness/scripts/task.py start <task-dir>`. |
-| 7 | For each slice: tester RED, developer GREEN, architect REVIEW, tester VALIDATE. |
-| 8 | Parent session verifies tests and owns git commits. |
-| 9 | Close child agents and archive the task. |
+| 7 | Ask whether to enable 3-agent mode for execution. |
+| 8 | If confirmed, keep architect/tester/developer child agents available; otherwise spawn one role only when the phase needs it. |
+| 9 | For each slice: tester RED, developer GREEN, architect REVIEW, tester VALIDATE. |
+| 10 | Parent session verifies tests and owns git commits. |
+| 11 | Close child agents and archive the task. |
 
 ## Codex Agent Dispatch
 
@@ -1357,6 +1407,10 @@ Reuse an existing role session with `followup_task` when continuing the same
 slice or moving to the next slice. Use `wait_agent` to collect results and
 `close_agent` when the role session is finished.
 
+Do not spawn all three role agents by default. After `task.py start`, return
+the slice plan to the user and ask whether to enable 3-agent mode. Without that
+confirmation, spawn only the role needed for the current phase.
+
 ## Hook Contract
 
 The `PreToolUse` hook injects context when `task_name`, `name`, or `target`
@@ -1390,6 +1444,7 @@ research/*.md for architect
 
 - Curate all three context manifests before `task.py start`.
 - Use role names in Codex `task_name` values.
+- Ask for execution-mode confirmation before opening three role agents.
 - Verify tests in the parent session before calling a slice complete.
 - Archive through `python3 .harness/scripts/task.py archive <task-dir>`.
 """
@@ -1420,7 +1475,7 @@ Hooks at `.claude/hooks/harness-*.py` inject context every session/turn.
 | Phase | Status | Sequence (order matters) |
 | --- | --- | --- |
 | Plan | `planning` | confirm project-root design doc → (optional) research → **curate 3 manifests** → architect writes info.md → `task.py start` |
-| Execute | `in_progress` | **TDD cycle**: tester(RED) → developer(GREEN) → architect(REVIEW/REFACTOR) → tester(VALIDATE) → main session commits |
+| Execute | `in_progress` | confirm execution mode → **TDD cycle**: tester(RED) → developer(GREEN) → architect(REVIEW/REFACTOR) → tester(VALIDATE) → main session commits |
 | Done | `archived` | `/harness:finish` writes `summary.md` and moves task to archive/ |
 
 **Why curate before architect**: architect reads `context.architect.jsonl` to see
@@ -1465,12 +1520,16 @@ Trivial change (typo/rename/config)?     → main session may edit directly,
 
 ## Dispatching via Claude Agent Teams (v1.6+)
 
-Sub-agents are dispatched as Team teammates, not plain Task calls. This unlocks:
+Three-agent Teams mode is optional per task. After `task.py start`, the main
+session returns the slice plan to the user and asks whether to enable this mode.
+
+When enabled, sub-agents are dispatched as Team teammates, not plain Task calls.
+This unlocks:
 - **Persistence**: teammate retains context across multiple turns
 - **Peer DM**: teammates can SendMessage each other
 - **Shared TaskList**: all teammates see the team's tasks
 
-### Bootstrap (right after task.py start)
+### Bootstrap (after execution-mode confirmation)
 
 ```
 TeamCreate(team_name: "<task-slug>", description: "<task title>")
@@ -1498,6 +1557,9 @@ SendMessage(to: "tester", message: "VALIDATE phase. Slice 1. Add edge cases.")
 
 Caveat: SendMessage does NOT re-trigger the inject-context hook. Agents re-read
 the project-root design doc and info.md each turn (per their role .md instructions).
+
+Without Teams mode confirmation, keep execution in the main session. Dispatch a
+single specialist role only when the current phase needs that role's context.
 
 ## Coexistence with Other Skills
 
