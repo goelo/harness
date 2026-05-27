@@ -284,7 +284,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertIn("name: harness-configure-verify", content)
         self.assertIn(".harness/verify.json", content)
         self.assertIn("Makefile", content)
-        self.assertIn("wait for confirmation", content)
+        self.assertIn("等待确认", content)
 
     def test_creates_grill_me_skill(self):
         """After init, .claude/skills/grill-me/SKILL.md exists."""
@@ -315,6 +315,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertIn("name: harness-implement", content)
         self.assertIn("Mandatory grill-me", content)
         self.assertIn("verify.py all", content)
+        self.assertIn("DeepSeek TUI 不会自动收到 Claude Code hook 事件", content)
 
     def test_creates_deepseek_harness_configure_verify_skill(self):
         """After init, ~/.deepseek/skills/harness-configure-verify/SKILL.md exists."""
@@ -330,7 +331,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertTrue(skill_path.is_file(), "DeepSeek configure verify SKILL.md not created")
         content = skill_path.read_text(encoding="utf-8")
         self.assertIn("name: harness-configure-verify", content)
-        self.assertIn("agent", content.lower())
+        self.assertIn("当前项目", content)
 
     def test_creates_deepseek_grill_me_skill(self):
         """After init, ~/.deepseek/skills/grill-me/SKILL.md exists."""
@@ -346,6 +347,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertTrue(skill_path.is_file(), "DeepSeek grill-me SKILL.md not created")
         content = skill_path.read_text(encoding="utf-8")
         self.assertIn("name: grill-me", content)
+        self.assertIn("每次只问一个问题", content)
 
     def test_creates_codex_harness_implement_skill(self):
         """After init, ~/.codex/skills/harness-implement/SKILL.md exists."""
@@ -363,7 +365,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertIn("name: harness-implement", content)
         self.assertIn("spawn_agent", content)
         self.assertIn(".codex/hooks.json", content)
-        self.assertIn("execution-mode confirmation", content)
+        self.assertIn("执行模式确认", content)
         self.assertIn("Mandatory grill-me", content)
         self.assertIn("verify.py all", content)
 
@@ -382,6 +384,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         content = skill_path.read_text(encoding="utf-8")
         self.assertIn("name: harness-configure-verify", content)
         self.assertIn("go.mod", content)
+        self.assertIn("等待确认", content)
 
     def test_deepseek_harness_skill_uses_context_script_and_agents(self):
         """DeepSeek harness skill uses explicit context.py plus agent_open."""
@@ -395,7 +398,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
             / "SKILL.md"
         )
         content = skill_path.read_text(encoding="utf-8")
-        self.assertIn("DeepSeek TUI does not receive Claude Code hook events", content)
+        self.assertIn("DeepSeek TUI 不会自动收到 Claude Code hook 事件", content)
         self.assertIn(".harness/scripts/context.py", content)
         self.assertIn("agent_open", content)
         self.assertIn("3-agent mode", content)
@@ -430,7 +433,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertTrue(content.startswith("---\n"), "grill-me skill missing frontmatter")
         self.assertIn("name: grill-me", content)
         self.assertIn("description:", content)
-        self.assertIn("Ask the questions one at a time.", content)
+        self.assertIn("每次只问一个问题", content)
 
     def test_skill_has_valid_frontmatter(self):
         """SKILL.md starts with YAML frontmatter containing name and description."""
@@ -501,10 +504,31 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
             "context.architect.jsonl",
             "info.md",
             "bypassPermissions",
-            "execution-mode confirm",
+            "执行模式确认",
             "Mandatory grill-me",
+            "读取项目根目录的需求文档",
         ):
             self.assertIn(keyword, content, f"skill body missing key concept: {keyword}")
+
+    def test_reinstall_refreshes_legacy_managed_skill(self):
+        """Re-running init updates legacy official English skills to Chinese content."""
+        skill_dir = self.project_dir / ".claude" / "skills" / "harness-implement"
+        skill_dir.mkdir(parents=True)
+        legacy = """---
+name: harness-implement
+description: old official template
+---
+
+Walks the AI through the full v1.6 harness TDD flow.
+"""
+        (skill_dir / "SKILL.md").write_text(legacy, encoding="utf-8")
+
+        self._run_init()
+
+        content = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("<!-- harness-managed-skill -->", content)
+        self.assertIn("读取项目根目录的需求文档", content)
+        self.assertNotIn("Walks the AI through", content)
 
     def test_init_output_tells_user_to_configure_verify(self):
         """Install output gives the next AI prompt for harness verify setup."""
