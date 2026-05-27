@@ -283,6 +283,10 @@ def create_skill_files(skills_dir: Path, harness_implement: str | None = None) -
     harness_skill_dir.mkdir(parents=True, exist_ok=True)
     _write_if_missing(harness_skill_dir / "SKILL.md", harness_implement)
 
+    configure_verify_skill_dir = skills_dir / "harness-configure-verify"
+    configure_verify_skill_dir.mkdir(parents=True, exist_ok=True)
+    _write_if_missing(configure_verify_skill_dir / "SKILL.md", SKILL_HARNESS_CONFIGURE_VERIFY)
+
     grill_me_skill_dir = skills_dir / "grill-me"
     grill_me_skill_dir.mkdir(parents=True, exist_ok=True)
     _write_if_missing(grill_me_skill_dir / "SKILL.md", SKILL_GRILL_ME)
@@ -1556,6 +1560,80 @@ If a question can be answered by exploring the codebase, explore the codebase in
 """
 
 
+SKILL_HARNESS_CONFIGURE_VERIFY = """\
+---
+name: harness-configure-verify
+description: Use when a harness project needs .harness/verify.json configured, review commands suggested, or commit-time lint/type/test/coverage checks set up.
+---
+
+# Harness Configure Verify
+
+Configure `.harness/verify.json` for the current project. The goal is to make
+`python3 .harness/scripts/verify.py all` meaningful before every harness slice
+commit.
+
+This skill is shared by Claude Code, DeepSeek TUI, and Codex agents.
+
+## Required Flow
+
+1. Read the current `.harness/verify.json`.
+2. Inspect available project entrypoints: `Makefile`, `go.mod`, `package.json`,
+   `pyproject.toml`, `Cargo.toml`, `README.md`, and `scripts/`.
+3. Identify non-mutating commands for:
+   - `commands.lint`
+   - `commands.type`
+   - `commands.test`
+   - `commands.coverage`
+4. Present the recommended JSON patch and wait for confirmation before writing.
+5. After confirmation, update `.harness/verify.json`.
+6. Run focused verification commands where practical, then report results.
+
+## Command Rules
+
+- Prefer check-only commands. Avoid commands that rewrite files.
+- Do not use scripts that run formatters with `-w`, `--write`, or equivalent
+  mutation flags.
+- Coverage thresholds belong in the project's own coverage command. The harness
+  only checks the command exit code.
+- If a command cannot be inferred from files, say which field is uncertain and
+  propose the safest placeholder rather than inventing a command.
+
+## Common Examples
+
+Go projects often use:
+
+```json
+{
+  "commands": {
+    "lint": "test -z \\"$(gofmt -l .)\\" && go vet ./...",
+    "type": "go test -run '^$' ./...",
+    "test": "go test ./...",
+    "coverage": "go test ./... -coverprofile=.harness/runtime/coverage.out"
+  },
+  "scope": {
+    "denied": [".harness/runtime/**", "output/**", "log/**"]
+  }
+}
+```
+
+Node projects often use package scripts:
+
+```json
+{
+  "commands": {
+    "lint": "npm run lint",
+    "type": "npm run typecheck",
+    "test": "npm test",
+    "coverage": "npm run coverage"
+  },
+  "scope": {
+    "denied": [".harness/runtime/**", "dist/**", "coverage/**"]
+  }
+}
+```
+"""
+
+
 HARNESS_SECTION = """\
 # Agent Harness
 
@@ -1877,6 +1955,10 @@ def main():
     print(f"  AGENTS.md  — harness conventions (created or appended)")
     report_rtk_status(rtk_status)
     report_caveman_status(caveman_status)
+    print("")
+    print("下一步建议配置提交前检查:")
+    print("  请配置 harness verify。先读取当前项目的构建和测试入口，给出 .harness/verify.json 推荐配置，等确认后再写入。")
+    print("  已安装 skill: harness-configure-verify")
 
 
 if __name__ == "__main__":

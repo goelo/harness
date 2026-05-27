@@ -268,6 +268,24 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         )
         self.assertTrue(skill_path.is_file(), "harness-implement SKILL.md not created")
 
+    def test_creates_harness_configure_verify_skill(self):
+        """After init, .claude/skills/harness-configure-verify/SKILL.md exists."""
+        self._run_init()
+
+        skill_path = (
+            self.project_dir
+            / ".claude"
+            / "skills"
+            / "harness-configure-verify"
+            / "SKILL.md"
+        )
+        self.assertTrue(skill_path.is_file(), "harness-configure-verify SKILL.md not created")
+        content = skill_path.read_text(encoding="utf-8")
+        self.assertIn("name: harness-configure-verify", content)
+        self.assertIn(".harness/verify.json", content)
+        self.assertIn("Makefile", content)
+        self.assertIn("wait for confirmation", content)
+
     def test_creates_grill_me_skill(self):
         """After init, .claude/skills/grill-me/SKILL.md exists."""
         self._run_init()
@@ -297,6 +315,22 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertIn("name: harness-implement", content)
         self.assertIn("Mandatory grill-me", content)
         self.assertIn("verify.py all", content)
+
+    def test_creates_deepseek_harness_configure_verify_skill(self):
+        """After init, ~/.deepseek/skills/harness-configure-verify/SKILL.md exists."""
+        self._run_init()
+
+        skill_path = (
+            self.home_dir
+            / ".deepseek"
+            / "skills"
+            / "harness-configure-verify"
+            / "SKILL.md"
+        )
+        self.assertTrue(skill_path.is_file(), "DeepSeek configure verify SKILL.md not created")
+        content = skill_path.read_text(encoding="utf-8")
+        self.assertIn("name: harness-configure-verify", content)
+        self.assertIn("agent", content.lower())
 
     def test_creates_deepseek_grill_me_skill(self):
         """After init, ~/.deepseek/skills/grill-me/SKILL.md exists."""
@@ -332,6 +366,22 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertIn("execution-mode confirmation", content)
         self.assertIn("Mandatory grill-me", content)
         self.assertIn("verify.py all", content)
+
+    def test_creates_codex_harness_configure_verify_skill(self):
+        """After init, ~/.codex/skills/harness-configure-verify/SKILL.md exists."""
+        self._run_init()
+
+        skill_path = (
+            self.home_dir
+            / ".codex"
+            / "skills"
+            / "harness-configure-verify"
+            / "SKILL.md"
+        )
+        self.assertTrue(skill_path.is_file(), "Codex configure verify SKILL.md not created")
+        content = skill_path.read_text(encoding="utf-8")
+        self.assertIn("name: harness-configure-verify", content)
+        self.assertIn("go.mod", content)
 
     def test_deepseek_harness_skill_uses_context_script_and_agents(self):
         """DeepSeek harness skill uses explicit context.py plus agent_open."""
@@ -455,6 +505,14 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
             "Mandatory grill-me",
         ):
             self.assertIn(keyword, content, f"skill body missing key concept: {keyword}")
+
+    def test_init_output_tells_user_to_configure_verify(self):
+        """Install output gives the next AI prompt for harness verify setup."""
+        result = self._run_init()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("请配置 harness verify", result.stdout)
+        self.assertIn("harness-configure-verify", result.stdout)
 
     def test_does_not_overwrite_existing_skill(self):
         """If SKILL.md already exists with different content, init skips it."""
