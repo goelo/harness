@@ -299,8 +299,8 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         )
         self.assertTrue(skill_path.is_file(), "grill-me SKILL.md not created")
 
-    def test_creates_deepseek_harness_implement_skill(self):
-        """After init, ~/.deepseek/skills/harness-implement/SKILL.md exists."""
+    def test_does_not_create_deepseek_harness_implement_skill(self):
+        """After init, ~/.deepseek/skills/harness-implement/SKILL.md is not created."""
         self._run_init()
 
         skill_path = (
@@ -310,15 +310,10 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
             / "harness-implement"
             / "SKILL.md"
         )
-        self.assertTrue(skill_path.is_file(), "DeepSeek harness-implement SKILL.md not created")
-        content = skill_path.read_text(encoding="utf-8")
-        self.assertIn("name: harness-implement", content)
-        self.assertIn("Mandatory grill-me", content)
-        self.assertIn("verify.py all", content)
-        self.assertIn("DeepSeek TUI 不会自动收到 Claude Code hook 事件", content)
+        self.assertFalse(skill_path.exists(), "DeepSeek harness-implement SKILL.md should not be created")
 
-    def test_creates_deepseek_harness_configure_verify_skill(self):
-        """After init, ~/.deepseek/skills/harness-configure-verify/SKILL.md exists."""
+    def test_does_not_create_deepseek_harness_configure_verify_skill(self):
+        """After init, ~/.deepseek/skills/harness-configure-verify/SKILL.md is not created."""
         self._run_init()
 
         skill_path = (
@@ -328,13 +323,10 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
             / "harness-configure-verify"
             / "SKILL.md"
         )
-        self.assertTrue(skill_path.is_file(), "DeepSeek configure verify SKILL.md not created")
-        content = skill_path.read_text(encoding="utf-8")
-        self.assertIn("name: harness-configure-verify", content)
-        self.assertIn("当前项目", content)
+        self.assertFalse(skill_path.exists(), "DeepSeek configure verify SKILL.md should not be created")
 
-    def test_creates_deepseek_grill_me_skill(self):
-        """After init, ~/.deepseek/skills/grill-me/SKILL.md exists."""
+    def test_does_not_create_deepseek_grill_me_skill(self):
+        """After init, ~/.deepseek/skills/grill-me/SKILL.md is not created."""
         self._run_init()
 
         skill_path = (
@@ -344,10 +336,7 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
             / "grill-me"
             / "SKILL.md"
         )
-        self.assertTrue(skill_path.is_file(), "DeepSeek grill-me SKILL.md not created")
-        content = skill_path.read_text(encoding="utf-8")
-        self.assertIn("name: grill-me", content)
-        self.assertIn("每次只问一个问题", content)
+        self.assertFalse(skill_path.exists(), "DeepSeek grill-me SKILL.md should not be created")
 
     def test_creates_codex_harness_implement_skill(self):
         """After init, ~/.codex/skills/harness-implement/SKILL.md exists."""
@@ -386,28 +375,25 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         self.assertIn("go.mod", content)
         self.assertIn("等待确认", content)
 
-    def test_deepseek_harness_skill_uses_context_script_and_agents(self):
-        """DeepSeek harness skill uses explicit context.py plus agent_open."""
+    def test_removes_existing_managed_deepseek_skill(self):
+        """Re-running init removes legacy official DeepSeek harness skills."""
+        skill_dir = self.home_dir / ".deepseek" / "skills" / "harness-implement"
+        skill_dir.mkdir(parents=True)
+        managed = """---
+name: harness-implement
+description: old official DeepSeek template
+---
+
+DeepSeek TUI does not receive Claude Code hook events.
+"""
+        (skill_dir / "SKILL.md").write_text(managed, encoding="utf-8")
+
         self._run_init()
 
-        skill_path = (
-            self.home_dir
-            / ".deepseek"
-            / "skills"
-            / "harness-implement"
-            / "SKILL.md"
-        )
-        content = skill_path.read_text(encoding="utf-8")
-        self.assertIn("DeepSeek TUI 不会自动收到 Claude Code hook 事件", content)
-        self.assertIn(".harness/scripts/context.py", content)
-        self.assertIn("agent_open", content)
-        self.assertIn("3-agent mode", content)
-        self.assertIn("Mandatory grill-me", content)
-        self.assertIn("verify.py all", content)
-        self.assertNotIn("TeamCreate", content)
+        self.assertFalse(skill_dir.exists(), "managed DeepSeek harness skill should be removed")
 
-    def test_does_not_overwrite_existing_deepseek_skill(self):
-        """If a DeepSeek SKILL.md already exists with different content, init skips it."""
+    def test_preserves_existing_custom_deepseek_skill(self):
+        """If a DeepSeek SKILL.md looks custom, init leaves it alone."""
         skill_dir = self.home_dir / ".deepseek" / "skills" / "grill-me"
         skill_dir.mkdir(parents=True)
         custom = "---\nname: grill-me\ndescription: my custom deepseek version\n---\n# Custom\n"
