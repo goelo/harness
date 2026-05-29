@@ -1,21 +1,6 @@
 #!/usr/bin/env python3
-"""PreToolUse hook — injects task context into sub-agent prompts.
+"""PreToolUse hook: inject phase-safe role context."""
 
-Triggered when Claude dispatches a Task/Agent with subagent_type matching
-a known role.
-
-Three roles (v1.7):
-  architect — designs (info.md), reviews diff vs design, refactors when needed.
-              Reads task docs + research/*.md + context.architect.jsonl
-  developer — implements GREEN code from failing tests.
-              Reads task docs + info.md + context.developer.jsonl
-  tester    — writes failing tests (RED) and edge cases (VALIDATE).
-              Reads task docs + info.md + context.tester.jsonl
-
-Design source: the active task package's proposal.md / design.md / tasks.md
-is read first. The project root's design.md / spec.md / requirements.md is
-kept as a compatibility fallback for older task packages.
-"""
 from __future__ import annotations
 
 import json
@@ -24,53 +9,26 @@ import sys
 from pathlib import Path
 
 LOCAL_CONTEXT_KEY = "local"
-
-# All three roles follow the standard pattern:
-#   task package docs + info.md + context.<role>.jsonl manifest
-# (Architect additionally gets research/*.md auto-included.)
-STANDARD_ROLES = ("architect", "developer", "tester")
-KNOWN_ROLES = STANDARD_ROLES
-
-# Active task package docs, in reading order.
-TASK_CONTEXT_FILENAMES = ("proposal.md", "design.md", "tasks.md")
-
-# Project-root design document fallback, in priority order.
-ROOT_DESIGN_FILENAMES = ("design.md", "spec.md", "requirements.md")
-
-
-def find_project_design(root: Path) -> Path | None:
-    """Find the project-root design document, by fallback priority."""
-    for name in ROOT_DESIGN_FILENAMES:
-        candidate = root / name
-        if candidate.is_file():
-            return candidate
-    return None
+KNOWN_ROLES = ("architect", "developer", "tester")
+PHASE_ROLE = {
+    "plan": "architect",
+    "red": "tester",
+    "green": "developer",
+    "review": "architect",
+    "validate": "tester",
+}
+CONTROLLED_SUFFIXES = (
+    "task.json",
+    "clarification.jsonl",
+    "clarification.md",
+    "test-result.red.json",
+    "test-result.green.json",
+    "review-result.json",
+    "verify-result.json",
+)
 
 
-def read_task_context_docs(task_dir: Path) -> list[tuple[str, str]]:
-    """Read task package context docs in canonical order."""
-    results = []
-    for name in TASK_CONTEXT_FILENAMES:
-        content = read_file_safe(task_dir / name)
-        if content:
-            results.append((name, content))
-    return results
-
-
-def read_design_context(root: Path, task_dir: Path) -> list[tuple[str, str]]:
-    """Prefer active task package docs; fall back to project-root design doc."""
-    task_docs = read_task_context_docs(task_dir)
-    if task_docs:
-        return task_docs
-
-    design_path = find_project_design(root)
-    if design_path is None:
-        return []
-    design = read_file_safe(design_path)
-    return [(design_path.name, design)] if design else []
-
-
-def find_harness_root(start: Path) -> Path | None:
+def find_project_root(start: Path) -> Path | None:
     cur = start.resolve()
     while cur != cur.parent:
         if (cur / ".harness").is_dir():
@@ -81,71 +39,51 @@ def find_harness_root(start: Path) -> Path | None:
 
 def resolve_session_key(data: dict) -> str | None:
     for key in ("session_id", "sessionId"):
-        val = data.get(key)
-        if isinstance(val, str) and val.strip():
-            return val.strip()
-    env_key = os.environ.get("HARNESS_CONTEXT_ID")
-    if env_key:
-        return env_key
-    return None
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return os.environ.get("HARNESS_CONTEXT_ID")
 
 
-def get_active_task_dir(root: Path, data: dict) -> Path | None:
-    sessions_dir = root / ".harness" / "runtime" / "sessions"
-    if not sessions_dir.is_dir():
-        return None
-
-    key = resolve_session_key(data)
-    if key:
-        candidate = sessions_dir / f"{key}.json"
-        if candidate.is_file():
-            task_dir = task_dir_from_session_file(root, candidate)
-            if task_dir:
-                return task_dir
-
-    local_session = sessions_dir / f"{LOCAL_CONTEXT_KEY}.json"
-    if local_session.is_file():
-        task_dir = task_dir_from_session_file(root, local_session)
-        if task_dir:
-            return task_dir
-
-    files = list(sessions_dir.glob("*.json"))
-    if len(files) == 1:
-        task_dir = task_dir_from_session_file(root, files[0])
-        if task_dir:
-            return task_dir
-
-    return unique_in_progress_task_dir(root)
-
-
-def task_dir_from_session_file(root: Path, session_file: Path) -> Path | None:
-    session = json.loads(session_file.read_text(encoding="utf-8"))
-    task_ref = session.get("current_task")
-    if not task_ref:
-        return None
-
+def task_dir_from_ref(root: Path, task_ref: str) -> Path | None:
     task_dir = root / task_ref
     return task_dir if task_dir.is_dir() else None
 
 
+def get_active_task_dir(root: Path, data: dict) -> Path | None:
+    sessions_dir = root / ".harness" / "runtime" / "sessions"
+    key = resolve_session_key(data)
+    candidates = []
+    if key:
+        candidates.append(sessions_dir / f"{key}.json")
+    candidates.append(sessions_dir / f"{LOCAL_CONTEXT_KEY}.json")
+    for path in candidates:
+        if not path.is_file():
+            continue
+        session = json.loads(path.read_text(encoding="utf-8"))
+        task_ref = session.get("current_task")
+        if task_ref:
+            task_dir = task_dir_from_ref(root, task_ref)
+            if task_dir:
+                return task_dir
+    return unique_in_progress_task_dir(root)
+
+
 def unique_in_progress_task_dir(root: Path) -> Path | None:
-    tasks_dir = root / ".harness" / "tasks"
+    tasks_dir = root / "docs" / "tasks"
     if not tasks_dir.is_dir():
         return None
-    candidates = []
+    matches = []
     for task_dir in tasks_dir.iterdir():
         if not task_dir.is_dir() or task_dir.name == "archive":
             continue
         task_json = task_dir / "task.json"
         if not task_json.is_file():
             continue
-        try:
-            data = json.loads(task_json.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            continue
+        data = json.loads(task_json.read_text(encoding="utf-8"))
         if data.get("status") == "in_progress":
-            candidates.append(task_dir)
-    return candidates[0] if len(candidates) == 1 else None
+            matches.append(task_dir)
+    return matches[0] if len(matches) == 1 else None
 
 
 def read_file_safe(path: Path) -> str:
@@ -156,10 +94,8 @@ def read_file_safe(path: Path) -> str:
 
 
 def read_jsonl_context(root: Path, jsonl_path: Path) -> list[tuple[str, str]]:
-    """Read file contents referenced by JSONL manifest. Skip seed rows."""
     if not jsonl_path.is_file():
         return []
-
     results = []
     for line in jsonl_path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
@@ -169,8 +105,10 @@ def read_jsonl_context(root: Path, jsonl_path: Path) -> list[tuple[str, str]]:
             item = json.loads(line)
         except json.JSONDecodeError:
             continue
-        file_path = item.get("file") or item.get("path")
-        if not file_path:
+        if "_example" in item:
+            continue
+        file_path = item.get("file")
+        if not isinstance(file_path, str) or not file_path:
             continue
         content = read_file_safe(root / file_path)
         if content:
@@ -178,55 +116,36 @@ def read_jsonl_context(root: Path, jsonl_path: Path) -> list[tuple[str, str]]:
     return results
 
 
-def read_directory_md_files(directory: Path) -> list[tuple[str, str]]:
-    """Read all .md files in a directory (non-recursive)."""
-    if not directory.is_dir():
-        return []
-    results = []
-    for f in sorted(directory.glob("*.md")):
-        content = read_file_safe(f)
-        if content:
-            results.append((f.name, content))
-    return results
+def task_phase(task_dir: Path) -> str:
+    data = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
+    return data.get("phase", "unknown")
 
 
-def build_standard_role_context(root: Path, task_dir: Path, role: str) -> str:
-    """Standard pattern: jsonl manifest + task docs + info.md."""
+def build_role_context(root: Path, task_dir: Path, role: str) -> str:
     parts = []
 
-    # 1. JSONL manifest files
-    manifest = task_dir / f"context.{role}.jsonl"
-    for file_path, content in read_jsonl_context(root, manifest):
+    standards = read_file_safe(root / "docs" / "standards" / "index.md")
+    if standards:
+        parts.append(f"=== docs/standards/index.md ===\n{standards}")
+
+    clarification = read_file_safe(task_dir / "clarification.md")
+    if clarification:
+        parts.append(f"=== clarification.md ===\n{clarification}")
+
+    plan = read_file_safe(task_dir / "implementation-plan.md")
+    if plan:
+        parts.append(f"=== implementation-plan.md ===\n{plan}")
+
+    for file_path, content in read_jsonl_context(root, task_dir / f"context.{role}.jsonl"):
         parts.append(f"=== {file_path} ===\n{content}")
-
-    # 2. Active task docs, with root design fallback for older task packages
-    for filename, content in read_design_context(root, task_dir):
-        parts.append(f"=== {filename} ===\n{content}")
-
-    # 3. info.md (when exists — architect writes it, others read it)
-    info = read_file_safe(task_dir / "info.md")
-    if info:
-        parts.append(f"=== info.md ===\n{info}")
-
-    # 4. For architect: also include all research/*.md files
-    if role == "architect":
-        for filename, content in read_directory_md_files(task_dir / "research"):
-            parts.append(f"=== research/{filename} ===\n{content}")
 
     return "\n\n".join(parts)
 
 
 def infer_role(tool_input: dict) -> str:
-    """Infer harness role from Claude or Codex tool input."""
-    direct_role = (
-        tool_input.get("subagent_type")
-        or tool_input.get("subagentType")
-        or tool_input.get("role")
-        or ""
-    )
-    if direct_role in KNOWN_ROLES:
-        return direct_role
-
+    direct = tool_input.get("subagent_type") or tool_input.get("subagentType") or tool_input.get("role") or ""
+    if direct in KNOWN_ROLES:
+        return direct
     for key in ("task_name", "name", "target"):
         value = tool_input.get(key)
         if not isinstance(value, str):
@@ -235,17 +154,41 @@ def infer_role(tool_input: dict) -> str:
         for role in KNOWN_ROLES:
             if role in lowered:
                 return role
-
     return ""
 
 
 def prompt_field(tool_input: dict) -> str:
-    """Return the prompt-like field used by the current agent tool."""
     if "prompt" in tool_input:
         return "prompt"
     if "message" in tool_input:
         return "message"
     return "prompt"
+
+
+def controlled_edit_target(tool_input: dict) -> str | None:
+    candidates = []
+    for key in ("file_path", "path", "target_file"):
+        value = tool_input.get(key)
+        if isinstance(value, str):
+            candidates.append(value)
+    for value in candidates:
+        normalized = value.replace("\\", "/")
+        if "/docs/tasks/" in normalized or normalized.startswith("docs/tasks/"):
+            if any(normalized.endswith(suffix) for suffix in CONTROLLED_SUFFIXES):
+                return value
+    return None
+
+
+def emit_block(reason: str) -> int:
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "additionalContext": reason,
+        }
+    }
+    print(json.dumps(output, ensure_ascii=False))
+    return 0
 
 
 def main() -> int:
@@ -255,35 +198,38 @@ def main() -> int:
         return 0
 
     tool_input = data.get("tool_input", {})
-    role = infer_role(tool_input)
+    target = controlled_edit_target(tool_input)
+    if target:
+        return emit_block(f"受控文件 {target} 只能通过 harness 内部工具生成，禁止手工编辑。")
 
+    role = infer_role(tool_input)
     if role not in KNOWN_ROLES:
         return 0
 
-    cwd = data.get("cwd") or "."
-    root = find_harness_root(Path(cwd))
+    root = find_project_root(Path(data.get("cwd") or "."))
     if root is None:
         return 0
-
-    # All three standard roles require an active task
     task_dir = get_active_task_dir(root, data)
     if task_dir is None:
         return 0
-    context = build_standard_role_context(root, task_dir, role)
 
+    phase = task_phase(task_dir)
+    expected = PHASE_ROLE.get(phase)
+    if expected != role:
+        return emit_block(f"当前阶段 {phase} 不允许调用 {role}。应执行的角色职责是 {expected or '无开发角色'}。")
+
+    context = build_role_context(root, task_dir, role)
     if not context:
         return 0
 
     field = prompt_field(tool_input)
-    original_prompt = tool_input.get(field, "")
-    new_prompt = f"## Injected Context\n\n{context}\n\n---\n\n## Task\n\n{original_prompt}"
-
-    updated_input = {**tool_input, field: new_prompt}
+    original = tool_input.get(field, "")
+    updated = {**tool_input, field: f"## Injected Context\n\n{context}\n\n---\n\n## Task\n\n{original}"}
     output = {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "allow",
-            "updatedInput": updated_input,
+            "updatedInput": updated,
         }
     }
     print(json.dumps(output, ensure_ascii=False))

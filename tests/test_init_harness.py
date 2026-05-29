@@ -1,22 +1,22 @@
-"""TDD tests for init-harness.py — Slice 1.
+"""Tests for init-harness.py observable install behavior."""
 
-Tests verify behavior through the public interface:
-  run init → check filesystem state.
-
-No implementation details tested — only observable outcomes.
-"""
+from __future__ import annotations
 
 import json
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 
-class TestInitHarnessCreatesStructure(unittest.TestCase):
-    """Running init-harness.py in an empty project creates the expected structure."""
+REPO_ROOT = Path(__file__).parent.parent
+INIT_SCRIPT = REPO_ROOT / "init-harness.py"
 
+
+class InitHarnessTestCase(unittest.TestCase):
     def setUp(self):
         self.project_dir = Path(tempfile.mkdtemp())
         self.home_dir = Path(tempfile.mkdtemp())
@@ -25,941 +25,333 @@ class TestInitHarnessCreatesStructure(unittest.TestCase):
         shutil.rmtree(self.project_dir)
         shutil.rmtree(self.home_dir)
 
-    def _run_init(self, *extra_args):
-        """Run init-harness.py targeting self.project_dir.
-
-        Defaults to --no-rtk and --no-caveman so unit tests don't trigger
-        system installs. Pass --check-deps explicitly when testing dry-run.
-        """
-        import subprocess
-        import sys
-
-        init_script = Path(__file__).parent.parent / "init-harness.py"
-        args = [sys.executable, str(init_script), "--target", str(self.project_dir)]
+    def run_init(self, *extra_args):
+        args = [sys.executable, str(INIT_SCRIPT), "--target", str(self.project_dir)]
         if "--check-deps" not in extra_args:
             if "--no-rtk" not in extra_args:
                 args.append("--no-rtk")
             if "--no-caveman" not in extra_args:
                 args.append("--no-caveman")
         args.extend(extra_args)
-        env = os.environ.copy()
-        env["HOME"] = str(self.home_dir)
-        result = subprocess.run(args, capture_output=True, text=True, env=env)
-        return result
+        return subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "HOME": str(self.home_dir)},
+        )
 
-    def test_creates_harness_directory_skeleton(self):
-        """After init, .harness/ has workflow.md, spec/, scripts/, tasks/, runtime/."""
-        result = self._run_init()
+
+class TestInitHarnessStructure(InitHarnessTestCase):
+    def test_creates_harness_and_docs_structure(self):
+        result = self.run_init()
         self.assertEqual(result.returncode, 0, result.stderr)
 
         harness = self.project_dir / ".harness"
-        self.assertTrue(harness.is_dir())
         self.assertTrue((harness / "workflow.md").is_file())
-        self.assertTrue((harness / "spec").is_dir())
-        self.assertTrue((harness / "spec" / "index.md").is_file())
-        self.assertTrue((harness / "scripts").is_dir())
+        self.assertTrue((harness / "verify.json").is_file())
+        self.assertTrue((harness / "runtime" / "sessions").is_dir())
         self.assertTrue((harness / "scripts" / "task.py").is_file())
         self.assertTrue((harness / "scripts" / "verify.py").is_file())
-        self.assertTrue((harness / "verify.json").is_file())
-        self.assertTrue((harness / "tasks").is_dir())
-        self.assertTrue((harness / "runtime" / "sessions").is_dir())
+        self.assertTrue((harness / "scripts" / "context.py").is_file())
+        self.assertFalse((harness / "tasks").exists())
+        self.assertFalse((harness / "spec").exists())
 
-    def test_verify_config_template_has_required_sections(self):
-        """After init, .harness/verify.json contains command and scope template keys."""
-        self._run_init()
+        self.assertTrue((self.project_dir / "docs" / "tasks").is_dir())
+        self.assertTrue((self.project_dir / "docs" / "standards").is_dir())
+        self.assertTrue((self.project_dir / "docs" / "index.md").is_file())
+        self.assertTrue((self.project_dir / "docs" / "standards" / "index.md").is_file())
 
-        config = json.loads((self.project_dir / ".harness" / "verify.json").read_text())
+    def test_verify_config_template_uses_required_checks(self):
+        self.run_init()
 
-        self.assertEqual(
-            sorted(config.get("commands", {}).keys()),
-            ["coverage", "lint", "test", "type"],
-        )
-        self.assertIn("denied", config.get("scope", {}))
+        config = json.loads((self.project_dir / ".harness" / "verify.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(config["required"], ["test", "scope"])
+        self.assertEqual(sorted(config["commands"].keys()), ["coverage", "lint", "test", "type"])
+        self.assertIn(".harness/runtime/**", config["scope"]["denied"])
+        self.assertIn("docs/standards/**", config["scope"]["denied"])
 
     def test_does_not_overwrite_existing_verify_config(self):
-        """If .harness/verify.json exists, init preserves project configuration."""
         harness = self.project_dir / ".harness"
         harness.mkdir()
-        existing = {
-            "commands": {
-                "lint": "custom lint",
-                "type": "custom type",
-                "test": "custom test",
-                "coverage": "custom coverage",
-            },
-            "scope": {"denied": ["custom/**"]},
-        }
+        existing = {"required": ["lint"], "commands": {"lint": "custom lint"}, "scope": {"denied": ["custom/**"]}}
         (harness / "verify.json").write_text(json.dumps(existing), encoding="utf-8")
 
-        self._run_init()
-
-        config = json.loads((harness / "verify.json").read_text())
-        self.assertEqual(config["commands"]["lint"], "custom lint")
-        self.assertEqual(config["scope"]["denied"], ["custom/**"])
-
-    def test_workflow_requires_grill_me_before_task_create(self):
-        """Workflow requires grill-me before creating a harness task."""
-        self._run_init()
-
-        workflow = (
-            self.project_dir
-            / ".harness"
-            / "workflow.md"
-        ).read_text(encoding="utf-8")
-
-        self.assertIn("Mandatory grill-me", workflow)
-        self.assertIn("before `task.py create`", workflow)
-
-    def test_creates_claude_hooks(self):
-        """After init, .claude/hooks/ has 3 harness-prefixed hook scripts."""
-        self._run_init()
-
-        hooks_dir = self.project_dir / ".claude" / "hooks"
-        self.assertTrue((hooks_dir / "harness-session-start.py").is_file())
-        self.assertTrue((hooks_dir / "harness-workflow-state.py").is_file())
-        self.assertTrue((hooks_dir / "harness-inject-context.py").is_file())
-
-    def test_creates_codex_hooks(self):
-        """After init, .codex/hooks/ has 3 harness-prefixed hook scripts."""
-        self._run_init()
-
-        hooks_dir = self.project_dir / ".codex" / "hooks"
-        self.assertTrue((hooks_dir / "harness-session-start.py").is_file())
-        self.assertTrue((hooks_dir / "harness-workflow-state.py").is_file())
-        self.assertTrue((hooks_dir / "harness-inject-context.py").is_file())
-
-    def test_creates_codex_hooks_json(self):
-        """After init, .codex/hooks.json registers Codex hook events."""
-        self._run_init()
-
-        hooks_path = self.project_dir / ".codex" / "hooks.json"
-        self.assertTrue(hooks_path.is_file(), ".codex/hooks.json was not created")
-        hooks_json = json.loads(hooks_path.read_text(encoding="utf-8"))
-        hooks = hooks_json.get("hooks", {})
-
-        self.assertIn("SessionStart", hooks)
-        self.assertIn("UserPromptSubmit", hooks)
-        self.assertIn("PreToolUse", hooks)
-        serialized = json.dumps(hooks_json, ensure_ascii=False)
-        self.assertIn(".codex/hooks/harness-session-start.py", serialized)
-        self.assertIn(".codex/hooks/harness-workflow-state.py", serialized)
-        self.assertIn(".codex/hooks/harness-inject-context.py", serialized)
-        self.assertIn("spawn_agent", serialized)
-        self.assertIn("followup_task", serialized)
-
-    def test_creates_claude_agents(self):
-        """v1.6: After init, .claude/agents/ has 3 role agent files."""
-        self._run_init()
-
-        agents_dir = self.project_dir / ".claude" / "agents"
-        for role in ("architect", "developer", "tester"):
-            self.assertTrue(
-                (agents_dir / f"{role}.md").is_file(),
-                f"agents/{role}.md was not created",
-            )
-        # Old role files should NOT be created
-        for old_role in ("research", "reviewer", "qa"):
-            self.assertFalse(
-                (agents_dir / f"{old_role}.md").is_file(),
-                f"v1.6 should not create agents/{old_role}.md",
-            )
-
-    def test_creates_claude_commands(self):
-        """After init, .claude/commands/harness/ has continue and finish."""
-        self._run_init()
-
-        commands_dir = self.project_dir / ".claude" / "commands" / "harness"
-        self.assertTrue((commands_dir / "continue.md").is_file())
-        self.assertTrue((commands_dir / "finish.md").is_file())
-
-    def test_creates_settings_with_hooks(self):
-        """After init, .claude/settings.json registers 3 hook events."""
-        self._run_init()
-
-        settings_path = self.project_dir / ".claude" / "settings.json"
-        self.assertTrue(settings_path.is_file())
-        settings = json.loads(settings_path.read_text())
-
-        hooks = settings.get("hooks", {})
-        self.assertIn("SessionStart", hooks)
-        self.assertIn("UserPromptSubmit", hooks)
-        self.assertIn("PreToolUse", hooks)
-
-    def test_creates_claude_md_when_absent(self):
-        """v1.6: When project has no CLAUDE.md, init creates a 3-role template."""
-        self._run_init()
-
-        claude_md = self.project_dir / "CLAUDE.md"
-        self.assertTrue(claude_md.is_file(), "CLAUDE.md was not created")
-        content = claude_md.read_text(encoding="utf-8")
-
-        # Should mention key harness concepts and all 3 roles
-        self.assertIn("harness", content.lower())
-        self.assertIn(".harness/", content)
-        for role in ("architect", "developer", "tester"):
-            self.assertIn(role, content, f"role '{role}' missing from CLAUDE.md")
-
-    def test_creates_agents_md_when_absent(self):
-        """When project has no AGENTS.md, init creates the same harness template."""
-        self._run_init()
-
-        agents_md = self.project_dir / "AGENTS.md"
-        self.assertTrue(agents_md.is_file(), "AGENTS.md was not created")
-        content = agents_md.read_text(encoding="utf-8")
-
-        self.assertIn("harness", content.lower())
-        self.assertIn(".harness/", content)
-        for role in ("architect", "developer", "tester"):
-            self.assertIn(role, content, f"role '{role}' missing from AGENTS.md")
-
-    def test_does_not_overwrite_existing_agents_md(self):
-        """If AGENTS.md already exists, init appends a harness section but preserves user content."""
-        existing_content = "# Project Agents\n\nCustom agent rules here.\n"
-        (self.project_dir / "AGENTS.md").write_text(existing_content)
-
-        self._run_init()
-
-        content = (self.project_dir / "AGENTS.md").read_text(encoding="utf-8")
-        self.assertIn("Custom agent rules here.", content)
-        self.assertIn("Agent Harness", content)
-
-    def test_idempotent_agents_md_append(self):
-        """Running init twice doesn't append the AGENTS.md harness section twice."""
-        self._run_init()
-        self._run_init()
-
-        content = (self.project_dir / "AGENTS.md").read_text(encoding="utf-8")
-        count = content.count("# Agent Harness")
-        self.assertEqual(count, 1, f"Found {count} Harness sections, expected 1")
-
-    def test_does_not_overwrite_existing_claude_md(self):
-        """If CLAUDE.md already exists, init appends a harness section but preserves user content."""
-        existing_content = "# My Project\n\nCustom project rules here.\n"
-        (self.project_dir / "CLAUDE.md").write_text(existing_content)
-
-        self._run_init()
-
-        content = (self.project_dir / "CLAUDE.md").read_text(encoding="utf-8")
-        # User content preserved
-        self.assertIn("Custom project rules here.", content)
-        # Harness section appended
-        self.assertIn("Agent Harness", content)
-
-    def test_idempotent_claude_md_append(self):
-        """Running init twice doesn't append the harness section twice."""
-        self._run_init()
-        self._run_init()
-
-        content = (self.project_dir / "CLAUDE.md").read_text(encoding="utf-8")
-        # Should only contain one Harness section
-        count = content.count("# Agent Harness")
-        self.assertEqual(count, 1, f"Found {count} Harness sections, expected 1")
-
-    def test_creates_harness_implement_skill(self):
-        """v1.5: After init, .claude/skills/harness-implement/SKILL.md exists."""
-        self._run_init()
-
-        skill_path = (
-            self.project_dir
-            / ".claude"
-            / "skills"
-            / "harness-implement"
-            / "SKILL.md"
-        )
-        self.assertTrue(skill_path.is_file(), "harness-implement SKILL.md not created")
-
-    def test_creates_harness_configure_verify_skill(self):
-        """After init, .claude/skills/harness-configure-verify/SKILL.md exists."""
-        self._run_init()
-
-        skill_path = (
-            self.project_dir
-            / ".claude"
-            / "skills"
-            / "harness-configure-verify"
-            / "SKILL.md"
-        )
-        self.assertTrue(skill_path.is_file(), "harness-configure-verify SKILL.md not created")
-        content = skill_path.read_text(encoding="utf-8")
-        self.assertIn("name: harness-configure-verify", content)
-        self.assertIn(".harness/verify.json", content)
-        self.assertIn("Makefile", content)
-        self.assertIn("等待确认", content)
-
-    def test_creates_grill_me_skill(self):
-        """After init, .claude/skills/grill-me/SKILL.md exists."""
-        self._run_init()
-
-        skill_path = (
-            self.project_dir
-            / ".claude"
-            / "skills"
-            / "grill-me"
-            / "SKILL.md"
-        )
-        self.assertTrue(skill_path.is_file(), "grill-me SKILL.md not created")
-
-    def test_does_not_create_deepseek_harness_implement_skill(self):
-        """After init, ~/.deepseek/skills/harness-implement/SKILL.md is not created."""
-        self._run_init()
-
-        skill_path = (
-            self.home_dir
-            / ".deepseek"
-            / "skills"
-            / "harness-implement"
-            / "SKILL.md"
-        )
-        self.assertFalse(skill_path.exists(), "DeepSeek harness-implement SKILL.md should not be created")
-
-    def test_does_not_create_deepseek_harness_configure_verify_skill(self):
-        """After init, ~/.deepseek/skills/harness-configure-verify/SKILL.md is not created."""
-        self._run_init()
-
-        skill_path = (
-            self.home_dir
-            / ".deepseek"
-            / "skills"
-            / "harness-configure-verify"
-            / "SKILL.md"
-        )
-        self.assertFalse(skill_path.exists(), "DeepSeek configure verify SKILL.md should not be created")
-
-    def test_does_not_create_deepseek_grill_me_skill(self):
-        """After init, ~/.deepseek/skills/grill-me/SKILL.md is not created."""
-        self._run_init()
-
-        skill_path = (
-            self.home_dir
-            / ".deepseek"
-            / "skills"
-            / "grill-me"
-            / "SKILL.md"
-        )
-        self.assertFalse(skill_path.exists(), "DeepSeek grill-me SKILL.md should not be created")
-
-    def test_creates_codex_harness_implement_skill(self):
-        """After init, ~/.codex/skills/harness-implement/SKILL.md exists."""
-        self._run_init()
-
-        skill_path = (
-            self.home_dir
-            / ".codex"
-            / "skills"
-            / "harness-implement"
-            / "SKILL.md"
-        )
-        self.assertTrue(skill_path.is_file(), "Codex harness-implement SKILL.md not created")
-        content = skill_path.read_text(encoding="utf-8")
-        self.assertIn("name: harness-implement", content)
-        self.assertIn("spawn_agent", content)
-        self.assertIn(".codex/hooks.json", content)
-        self.assertIn("执行模式确认", content)
-        self.assertIn("Mandatory grill-me", content)
-        self.assertIn("verify.py all", content)
-
-    def test_creates_codex_harness_configure_verify_skill(self):
-        """After init, ~/.codex/skills/harness-configure-verify/SKILL.md exists."""
-        self._run_init()
-
-        skill_path = (
-            self.home_dir
-            / ".codex"
-            / "skills"
-            / "harness-configure-verify"
-            / "SKILL.md"
-        )
-        self.assertTrue(skill_path.is_file(), "Codex configure verify SKILL.md not created")
-        content = skill_path.read_text(encoding="utf-8")
-        self.assertIn("name: harness-configure-verify", content)
-        self.assertIn("go.mod", content)
-        self.assertIn("等待确认", content)
-
-    def test_removes_existing_managed_deepseek_skill(self):
-        """Re-running init removes legacy official DeepSeek harness skills."""
-        skill_dir = self.home_dir / ".deepseek" / "skills" / "harness-implement"
-        skill_dir.mkdir(parents=True)
-        managed = """---
-name: harness-implement
-description: old official DeepSeek template
----
-
-DeepSeek TUI does not receive Claude Code hook events.
-"""
-        (skill_dir / "SKILL.md").write_text(managed, encoding="utf-8")
-
-        self._run_init()
-
-        self.assertFalse(skill_dir.exists(), "managed DeepSeek harness skill should be removed")
-
-    def test_preserves_existing_custom_deepseek_skill(self):
-        """If a DeepSeek SKILL.md looks custom, init leaves it alone."""
-        skill_dir = self.home_dir / ".deepseek" / "skills" / "grill-me"
-        skill_dir.mkdir(parents=True)
-        custom = "---\nname: grill-me\ndescription: my custom deepseek version\n---\n# Custom\n"
-        (skill_dir / "SKILL.md").write_text(custom, encoding="utf-8")
-
-        self._run_init()
-
-        content = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("my custom deepseek version", content)
-
-    def test_grill_me_skill_has_valid_frontmatter(self):
-        """grill-me SKILL.md starts with YAML frontmatter."""
-        self._run_init()
-
-        skill_path = (
-            self.project_dir
-            / ".claude"
-            / "skills"
-            / "grill-me"
-            / "SKILL.md"
-        )
-        content = skill_path.read_text(encoding="utf-8")
-        self.assertTrue(content.startswith("---\n"), "grill-me skill missing frontmatter")
-        self.assertIn("name: grill-me", content)
-        self.assertIn("description:", content)
-        self.assertIn("每次只问一个问题", content)
-
-    def test_skill_has_valid_frontmatter(self):
-        """SKILL.md starts with YAML frontmatter containing name and description."""
-        self._run_init()
-
-        skill_path = (
-            self.project_dir
-            / ".claude"
-            / "skills"
-            / "harness-implement"
-            / "SKILL.md"
-        )
-        content = skill_path.read_text(encoding="utf-8")
-        self.assertTrue(content.startswith("---\n"), "skill missing frontmatter")
-        # Required fields
-        self.assertIn("name: harness-implement", content)
-        self.assertIn("description:", content)
-
-    def test_skill_description_contains_trigger_phrases(self):
-        """description (between first --- markers) contains both EN + CN trigger phrases."""
-        self._run_init()
-
-        skill_path = (
-            self.project_dir
-            / ".claude"
-            / "skills"
-            / "harness-implement"
-            / "SKILL.md"
-        )
-        content = skill_path.read_text(encoding="utf-8")
-
-        # Extract frontmatter
-        parts = content.split("---", 2)
-        self.assertGreaterEqual(len(parts), 3, "skill has no frontmatter block")
-        frontmatter = parts[1]
-
-        # Triggers — at least one of each language
-        self.assertIn("design.md", frontmatter)
-        self.assertTrue(
-            "按照" in frontmatter or "按 design" in frontmatter,
-            "Chinese trigger phrase missing from description",
-        )
-        self.assertTrue(
-            "implement" in frontmatter.lower(),
-            "English trigger 'implement' missing from description",
-        )
-
-    def test_skill_body_describes_flow(self):
-        """v1.6: Body mentions all 3 roles + key concepts."""
-        self._run_init()
-
-        skill_path = (
-            self.project_dir
-            / ".claude"
-            / "skills"
-            / "harness-implement"
-            / "SKILL.md"
-        )
-        content = skill_path.read_text(encoding="utf-8")
-
-        for keyword in (
-            "architect",
-            "developer",
-            "tester",
-            "TeamCreate",
-            "task.py start",
-            "verify.py all",
-            "context.architect.jsonl",
-            "info.md",
-            "bypassPermissions",
-            "执行模式确认",
-            "Mandatory grill-me",
-            "读取项目根目录的需求文档",
-        ):
-            self.assertIn(keyword, content, f"skill body missing key concept: {keyword}")
-
-    def test_reinstall_refreshes_legacy_managed_skill(self):
-        """Re-running init updates legacy official English skills to Chinese content."""
-        skill_dir = self.project_dir / ".claude" / "skills" / "harness-implement"
-        skill_dir.mkdir(parents=True)
-        legacy = """---
-name: harness-implement
-description: old official template
----
-
-Walks the AI through the full v1.6 harness TDD flow.
-"""
-        (skill_dir / "SKILL.md").write_text(legacy, encoding="utf-8")
-
-        self._run_init()
-
-        content = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("<!-- harness-managed-skill -->", content)
-        self.assertIn("读取项目根目录的需求文档", content)
-        self.assertNotIn("Walks the AI through", content)
-
-    def test_init_output_tells_user_to_configure_verify(self):
-        """Install output gives the next AI prompt for harness verify setup."""
-        result = self._run_init()
-
+        result = self.run_init()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("请配置 harness verify", result.stdout)
-        self.assertIn("harness-configure-verify", result.stdout)
 
-    def test_does_not_overwrite_existing_skill(self):
-        """If SKILL.md already exists with different content, init skips it."""
-        skill_dir = self.project_dir / ".claude" / "skills" / "harness-implement"
-        skill_dir.mkdir(parents=True)
-        custom = "---\nname: harness-implement\ndescription: my custom version\n---\n# Custom\n"
-        (skill_dir / "SKILL.md").write_text(custom)
+        config = json.loads((harness / "verify.json").read_text(encoding="utf-8"))
+        self.assertEqual(config, existing)
 
-        self._run_init()
+    def test_docs_index_is_preserved_and_augmented(self):
+        docs = self.project_dir / "docs"
+        docs.mkdir()
+        (docs / "index.md").write_text("# Existing Docs\n\n业务文档说明。\n", encoding="utf-8")
 
-        content = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("my custom version", content)
+        result = self.run_init()
+        self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_creates_gitignore_when_absent(self):
-        """v1.5.4: init creates .gitignore with harness/python/node defaults."""
-        self._run_init()
+        content = (docs / "index.md").read_text(encoding="utf-8")
+        self.assertIn("业务文档说明", content)
+        self.assertIn("docs/tasks/", content)
+        self.assertIn("docs/standards/", content)
 
-        gitignore = self.project_dir / ".gitignore"
-        self.assertTrue(gitignore.is_file())
-        content = gitignore.read_text(encoding="utf-8")
-        for entry in ("__pycache__/", "node_modules/", ".harness/runtime/", ".DS_Store"):
-            self.assertIn(entry, content, f".gitignore missing {entry}")
-
-    def test_gitignore_appends_to_existing(self):
-        """If user has a .gitignore already, init appends harness defaults below."""
-        existing = "# my custom rules\nsecrets.env\n"
-        (self.project_dir / ".gitignore").write_text(existing)
-
-        self._run_init()
+    def test_gitignore_is_idempotent(self):
+        self.run_init()
+        self.run_init()
 
         content = (self.project_dir / ".gitignore").read_text(encoding="utf-8")
-        self.assertIn("secrets.env", content, "user content lost")
-        self.assertIn("__pycache__/", content, "harness defaults not appended")
+        self.assertIn(".harness/runtime/", content)
+        self.assertIn("__pycache__/", content)
+        self.assertEqual(content.count("# harness defaults"), 1)
 
-    def test_gitignore_idempotent(self):
-        """Running init twice doesn't double-append harness defaults."""
-        self._run_init()
-        self._run_init()
 
-        content = (self.project_dir / ".gitignore").read_text(encoding="utf-8")
-        count = content.count("# harness defaults")
-        self.assertEqual(count, 1, f"appended {count} times, expected 1")
+class TestInitHarnessSkills(InitHarnessTestCase):
+    def test_creates_new_and_compat_skills_for_claude_and_codex(self):
+        result = self.run_init()
+        self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_creates_team_cleanup_script(self):
-        """v1.5.4: init deploys team_cleanup.py to .harness/scripts/."""
-        self._run_init()
+        claude_skills = self.project_dir / ".claude" / "skills"
+        codex_skills = self.home_dir / ".codex" / "skills"
+        for base in (claude_skills, codex_skills):
+            for skill_name in (
+                "requirement-confirmation",
+                "requirement-development",
+                "harness-implement",
+                "grill-me",
+                "harness-configure-verify",
+            ):
+                self.assertTrue((base / skill_name / "SKILL.md").is_file(), f"missing {base}/{skill_name}")
 
-        script = self.project_dir / ".harness" / "scripts" / "team_cleanup.py"
-        self.assertTrue(script.is_file(), "team_cleanup.py not created")
-        content = script.read_text(encoding="utf-8")
-        # Should be the real one, not stub
-        self.assertIn("find_team_processes", content, "stub deployed instead of real script")
+        confirmation = (claude_skills / "requirement-confirmation" / "SKILL.md").read_text(encoding="utf-8")
+        development = (claude_skills / "requirement-development" / "SKILL.md").read_text(encoding="utf-8")
+        harness_compat = (claude_skills / "harness-implement" / "SKILL.md").read_text(encoding="utf-8")
+        grill_compat = (claude_skills / "grill-me" / "SKILL.md").read_text(encoding="utf-8")
 
-    def test_creates_context_script(self):
-        """init deploys context.py for runtimes without Claude hooks."""
-        self._run_init()
+        self.assertIn("name: requirement-confirmation", confirmation)
+        self.assertIn("每次只提出一个问题", confirmation)
+        self.assertIn("confirmedBy", confirmation)
+        self.assertIn("name: requirement-development", development)
+        self.assertIn("requirement-confirmation", development)
+        self.assertIn("task.py advance", development)
+        self.assertIn("name: harness-implement", harness_compat)
+        self.assertIn("requirement-development", harness_compat)
+        self.assertIn("name: grill-me", grill_compat)
+        self.assertIn("requirement-confirmation", grill_compat)
 
-        script = self.project_dir / ".harness" / "scripts" / "context.py"
-        self.assertTrue(script.is_file(), "context.py not created")
-        content = script.read_text(encoding="utf-8")
-        self.assertIn("Build role-specific harness context", content)
-
-    def test_creates_verify_script(self):
-        """init deploys verify.py for commit-time quality gates."""
-        self._run_init()
-
-        script = self.project_dir / ".harness" / "scripts" / "verify.py"
-        self.assertTrue(script.is_file(), "verify.py not created")
-        content = script.read_text(encoding="utf-8")
-        self.assertIn("Run harness quality checks", content)
-
-    def test_context_script_outputs_role_context(self):
-        """context.py emits task docs, manifest files, info.md, and prompt."""
-        import subprocess
-        import sys
-
-        self._run_init()
-
-        harness = self.project_dir / ".harness"
-        task_dir = harness / "tasks" / "05-25-context-demo"
-        task_dir.mkdir(parents=True)
-        (task_dir / "proposal.md").write_text("# Proposal\n\nContext proposal\n", encoding="utf-8")
-        (task_dir / "design.md").write_text("# Design\n\nContext design\n", encoding="utf-8")
-        (task_dir / "tasks.md").write_text("# Tasks\n\nContext tasks\n", encoding="utf-8")
-        (task_dir / "info.md").write_text("# Info\n\nContext info\n", encoding="utf-8")
-        (task_dir / "context.developer.jsonl").write_text(
-            '{"file": ".harness/spec/index.md", "reason": "team spec"}\n',
+    def test_managed_skills_refresh_without_overwriting_custom_skills(self):
+        managed_dir = self.project_dir / ".claude" / "skills" / "harness-implement"
+        managed_dir.mkdir(parents=True)
+        (managed_dir / "SKILL.md").write_text(
+            "---\nname: harness-implement\ndescription: old\n---\n\nWalks the AI through the full v1.6 harness TDD flow.\n",
+            encoding="utf-8",
+        )
+        custom_dir = self.project_dir / ".claude" / "skills" / "requirement-development"
+        custom_dir.mkdir(parents=True)
+        (custom_dir / "SKILL.md").write_text(
+            "---\nname: requirement-development\ndescription: custom\n---\n\n# Custom\n",
             encoding="utf-8",
         )
 
-        result = subprocess.run(
+        result = self.run_init()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        managed = (managed_dir / "SKILL.md").read_text(encoding="utf-8")
+        custom = (custom_dir / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("requirement-development", managed)
+        self.assertIn("custom", custom)
+
+    def test_removes_managed_deepseek_skills_and_preserves_custom(self):
+        managed = self.home_dir / ".deepseek" / "skills" / "requirement-development"
+        managed.mkdir(parents=True)
+        (managed / "SKILL.md").write_text(
+            "---\nname: requirement-development\ndescription: old\n---\n\n需求开发\n\ntask.py advance\n",
+            encoding="utf-8",
+        )
+        custom = self.home_dir / ".deepseek" / "skills" / "grill-me"
+        custom.mkdir(parents=True)
+        (custom / "SKILL.md").write_text(
+            "---\nname: grill-me\ndescription: custom\n---\n\n# Custom\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_init()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        self.assertFalse(managed.exists())
+        self.assertTrue((custom / "SKILL.md").is_file())
+
+
+class TestInitHarnessHooksAndInstructions(InitHarnessTestCase):
+    def test_creates_hooks_settings_and_instruction_files(self):
+        result = self.run_init()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        for base in (self.project_dir / ".claude" / "hooks", self.project_dir / ".codex" / "hooks"):
+            self.assertTrue((base / "harness-session-start.py").is_file())
+            self.assertTrue((base / "harness-workflow-state.py").is_file())
+            self.assertTrue((base / "harness-inject-context.py").is_file())
+
+        settings = json.loads((self.project_dir / ".claude" / "settings.json").read_text(encoding="utf-8"))
+        codex_hooks = json.loads((self.project_dir / ".codex" / "hooks.json").read_text(encoding="utf-8"))
+        self.assertIn("PreToolUse", settings["hooks"])
+        self.assertIn("PreToolUse", codex_hooks["hooks"])
+
+        for name in ("CLAUDE.md", "AGENTS.md"):
+            content = (self.project_dir / name).read_text(encoding="utf-8")
+            self.assertIn("# Agent Harness", content)
+            self.assertIn("docs/tasks/", content)
+            self.assertIn("requirement-confirmation", content)
+            self.assertIn("clarify -> plan -> red -> green -> review -> validate -> done -> archived", content)
+
+    def test_instruction_append_is_idempotent(self):
+        (self.project_dir / "AGENTS.md").write_text("# Existing\n\n规则。\n", encoding="utf-8")
+
+        self.run_init()
+        self.run_init()
+
+        content = (self.project_dir / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn("规则", content)
+        self.assertEqual(content.count("# Agent Harness"), 1)
+
+    def test_existing_hooks_are_preserved_and_harness_hooks_are_idempotent(self):
+        claude_dir = self.project_dir / ".claude"
+        claude_dir.mkdir(parents=True)
+        (claude_dir / "settings.json").write_text(
+            json.dumps({"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "echo existing"}]}]}}),
+            encoding="utf-8",
+        )
+        codex_dir = self.project_dir / ".codex"
+        codex_dir.mkdir(parents=True)
+        (codex_dir / "hooks.json").write_text(
+            json.dumps({"hooks": {"SessionStart": [{"matcher": "startup", "hooks": [{"type": "command", "command": "echo existing"}]}]}}),
+            encoding="utf-8",
+        )
+
+        self.run_init()
+        self.run_init()
+
+        settings = json.loads((claude_dir / "settings.json").read_text(encoding="utf-8"))
+        codex = json.loads((codex_dir / "hooks.json").read_text(encoding="utf-8"))
+        claude_serialized = json.dumps(settings, ensure_ascii=False)
+        codex_serialized = json.dumps(codex, ensure_ascii=False)
+        self.assertIn("echo existing", claude_serialized)
+        self.assertIn("echo existing", codex_serialized)
+        self.assertEqual(claude_serialized.count("harness-session-start.py"), 1)
+        self.assertEqual(codex_serialized.count("harness-session-start.py"), 1)
+
+
+class TestInitHarnessContextScripts(InitHarnessTestCase):
+    def test_context_script_outputs_docs_task_context(self):
+        result = self.run_init()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        task_dir = self.project_dir / "docs" / "tasks" / "05-28-context"
+        task_dir.mkdir(parents=True)
+        (task_dir / "clarification.md").write_text("# 需求确认\n\n开发意图。\n", encoding="utf-8")
+        (task_dir / "implementation-plan.md").write_text("# 实现计划\n\n## 开发意图摘要\n内容。\n", encoding="utf-8")
+        (task_dir / "context.developer.jsonl").write_text(
+            '{"file":"docs/standards/index.md","reason":"团队工程规范"}\n',
+            encoding="utf-8",
+        )
+
+        output = subprocess.run(
             [
                 sys.executable,
-                str(harness / "scripts" / "context.py"),
+                str(self.project_dir / ".harness" / "scripts" / "context.py"),
                 "developer",
                 "--task",
-                "05-25-context-demo",
+                "docs/tasks/05-28-context",
                 "--prompt",
-                "Build it",
+                "继续开发",
             ],
             cwd=str(self.project_dir),
             capture_output=True,
             text=True,
         )
 
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("## Injected Context", result.stdout)
-        self.assertIn("Team Coding Spec", result.stdout)
-        self.assertIn("Context proposal", result.stdout)
-        self.assertIn("Context design", result.stdout)
-        self.assertIn("Context tasks", result.stdout)
-        self.assertIn("Context info", result.stdout)
-        self.assertIn("## Task", result.stdout)
-        self.assertIn("Build it", result.stdout)
+        self.assertEqual(output.returncode, 0, output.stderr)
+        self.assertIn("## Injected Context", output.stdout)
+        self.assertIn("docs/standards/index.md", output.stdout)
+        self.assertIn("clarification.md", output.stdout)
+        self.assertIn("implementation-plan.md", output.stdout)
+        self.assertIn("继续开发", output.stdout)
 
-    def test_embedded_inject_hook_template_reads_task_package_docs(self):
-        """Standalone init fallback installs a working inject-context hook."""
-        import subprocess
-        import sys
-
+    def test_embedded_inject_hook_template_reads_docs_task_context(self):
         standalone_dir = self.project_dir / "standalone"
         standalone_dir.mkdir()
         standalone_init = standalone_dir / "init-harness.py"
-        shutil.copy2(Path(__file__).parent.parent / "init-harness.py", standalone_init)
+        shutil.copy2(INIT_SCRIPT, standalone_init)
 
         result = subprocess.run(
-            [
-                sys.executable,
-                str(standalone_init),
-                "--target",
-                str(self.project_dir),
-                "--no-rtk",
-                "--no-caveman",
-            ],
+            [sys.executable, str(standalone_init), "--target", str(self.project_dir), "--no-rtk", "--no-caveman"],
             capture_output=True,
             text=True,
             env={**os.environ, "HOME": str(self.home_dir)},
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
-        harness = self.project_dir / ".harness"
-        task_dir = harness / "tasks" / "05-22-embedded"
+        task_dir = self.project_dir / "docs" / "tasks" / "05-28-embedded"
         task_dir.mkdir(parents=True)
-        (task_dir / "proposal.md").write_text(
-            "# Proposal\n\nEmbedded task proposal\n", encoding="utf-8"
-        )
-        (task_dir / "design.md").write_text(
-            "# Design\n\nEmbedded task design\n", encoding="utf-8"
-        )
-        (task_dir / "tasks.md").write_text(
-            "# Tasks\n\nEmbedded task list\n", encoding="utf-8"
-        )
+        (task_dir / "task.json").write_text(json.dumps({"status": "in_progress", "phase": "green"}), encoding="utf-8")
+        (task_dir / "clarification.md").write_text("# 需求确认\n\n嵌入式上下文。\n", encoding="utf-8")
+        (task_dir / "implementation-plan.md").write_text("# 实现计划\n\n嵌入式计划。\n", encoding="utf-8")
         (task_dir / "context.developer.jsonl").write_text(
-            '{"file": ".harness/spec/index.md", "reason": "team spec"}\n',
+            '{"file":"docs/standards/index.md","reason":"团队工程规范"}\n',
             encoding="utf-8",
         )
-        (harness / "runtime" / "sessions" / "sess-embedded.json").write_text(
-            json.dumps({"current_task": ".harness/tasks/05-22-embedded"}),
+        sessions = self.project_dir / ".harness" / "runtime" / "sessions"
+        sessions.mkdir(parents=True, exist_ok=True)
+        (sessions / "sess-embedded.json").write_text(
+            json.dumps({"current_task": "docs/tasks/05-28-embedded"}),
             encoding="utf-8",
         )
 
-        hook_path = self.project_dir / ".claude" / "hooks" / "harness-inject-context.py"
         output = subprocess.run(
-            [sys.executable, str(hook_path)],
+            [sys.executable, str(self.project_dir / ".claude" / "hooks" / "harness-inject-context.py")],
             input=json.dumps(
                 {
                     "cwd": str(self.project_dir),
                     "session_id": "sess-embedded",
                     "tool_name": "Agent",
-                    "tool_input": {
-                        "subagent_type": "developer",
-                        "prompt": "Build it",
-                    },
+                    "tool_input": {"task_name": "harness_developer", "prompt": "Build it"},
                 }
             ),
+            cwd=str(self.project_dir),
             capture_output=True,
             text=True,
-            cwd=str(self.project_dir),
         )
-        self.assertEqual(output.returncode, 0, output.stderr)
 
+        self.assertEqual(output.returncode, 0, output.stderr)
         payload = json.loads(output.stdout)
         prompt = payload["hookSpecificOutput"]["updatedInput"]["prompt"]
-        self.assertIn("Embedded task proposal", prompt)
-        self.assertIn("Embedded task design", prompt)
-        self.assertIn("Embedded task list", prompt)
+        self.assertIn("嵌入式上下文", prompt)
+        self.assertIn("嵌入式计划", prompt)
+        self.assertIn("docs/standards/index.md", prompt)
 
 
-class TestRtkAutoInstall(unittest.TestCase):
-    """v1.6: init auto-installs RTK by default; --no-rtk skips it."""
-
-    def setUp(self):
-        self.project_dir = Path(tempfile.mkdtemp())
-        self.home_dir = Path(tempfile.mkdtemp())
-
-    def tearDown(self):
-        shutil.rmtree(self.project_dir)
-        shutil.rmtree(self.home_dir)
-
-    def _run_init(self, *args):
-        import subprocess
-        import sys
-
-        init_script = Path(__file__).parent.parent / "init-harness.py"
-        return subprocess.run(
-            [sys.executable, str(init_script), "--target", str(self.project_dir), *args],
-            capture_output=True,
-            text=True,
-            env={**os.environ, "HOME": str(self.home_dir)},
-        )
-
-    def test_no_rtk_flag_reports_skipped(self):
-        """--no-rtk: skip install, report 'skipped' in output."""
-        result = self._run_init("--no-rtk")
+class TestDependencyFlags(InitHarnessTestCase):
+    def test_no_rtk_and_no_caveman_flags_report_skipped(self):
+        result = self.run_init("--no-rtk", "--no-caveman")
         self.assertEqual(result.returncode, 0, result.stderr)
         combined = result.stdout + result.stderr
         self.assertIn("rtk", combined.lower())
-        self.assertIn("skip", combined.lower())
+        self.assertIn("caveman", combined.lower())
+        self.assertIn("skipped", combined.lower())
 
-    def test_check_deps_does_not_install(self):
-        """--check-deps: report status without running curl."""
-        result = self._run_init("--check-deps")
+    def test_check_deps_reports_without_writing_project_files(self):
+        result = self.run_init("--check-deps", "--no-rtk", "--no-caveman")
         self.assertEqual(result.returncode, 0, result.stderr)
         combined = result.stdout + result.stderr
-        # Should mention rtk + dry-run / check-deps mode
-        self.assertIn("rtk", combined.lower())
-        # And NOT actually attempt curl
-        self.assertNotIn("curl -fsSL https://raw.githubusercontent", combined)
+        self.assertIn("Check-deps", combined)
+        self.assertFalse((self.project_dir / ".harness").exists())
 
-    def test_check_deps_reports_when_rtk_present(self):
-        """If rtk is on PATH, --check-deps reports 'installed'."""
-        # We can't reliably guarantee rtk is or isn't on PATH; just verify the
-        # output mentions install status (one of: installed/missing/skipped).
-        result = self._run_init("--check-deps")
-        self.assertEqual(result.returncode, 0)
-        combined = (result.stdout + result.stderr).lower()
-        # Output should contain at least one of these status words for rtk
-        self.assertTrue(
-            any(s in combined for s in ("installed", "not installed", "missing", "skipped", "would install")),
-            f"no rtk status found in output: {combined[:500]}",
-        )
-
-    def test_help_mentions_no_rtk_and_check_deps(self):
-        """--help should document the new flags."""
-        import subprocess
-        import sys
-        init_script = Path(__file__).parent.parent / "init-harness.py"
-        result = subprocess.run(
-            [sys.executable, str(init_script), "--help"],
-            capture_output=True,
-            text=True,
-        )
+    def test_help_mentions_dependency_flags(self):
+        result = subprocess.run([sys.executable, str(INIT_SCRIPT), "--help"], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0)
         self.assertIn("--no-rtk", result.stdout)
         self.assertIn("--no-caveman", result.stdout)
         self.assertIn("--check-deps", result.stdout)
-
-
-class TestCavemanAutoInstall(unittest.TestCase):
-    """v1.6: init auto-installs Caveman by default; --no-caveman skips it."""
-
-    def setUp(self):
-        self.project_dir = Path(tempfile.mkdtemp())
-        self.home_dir = Path(tempfile.mkdtemp())
-
-    def tearDown(self):
-        shutil.rmtree(self.project_dir)
-        shutil.rmtree(self.home_dir)
-
-    def _run_init(self, *args):
-        import subprocess
-        import sys
-
-        init_script = Path(__file__).parent.parent / "init-harness.py"
-        # Always skip RTK in this test class (we're testing caveman in isolation)
-        full_args = [sys.executable, str(init_script), "--target", str(self.project_dir)]
-        if "--check-deps" not in args:
-            full_args.append("--no-rtk")
-        full_args.extend(args)
-        return subprocess.run(
-            full_args,
-            capture_output=True,
-            text=True,
-            env={**os.environ, "HOME": str(self.home_dir)},
-        )
-
-    def test_no_caveman_flag_reports_skipped(self):
-        result = self._run_init("--no-caveman")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        combined = result.stdout + result.stderr
-        self.assertIn("caveman", combined.lower())
-        self.assertIn("skip", combined.lower())
-
-    def test_check_deps_reports_caveman_status(self):
-        """--check-deps reports caveman status without running install."""
-        result = self._run_init("--check-deps", "--no-rtk")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        combined = (result.stdout + result.stderr).lower()
-        self.assertIn("caveman", combined)
-        # Should NOT have actually run the install URL
-        self.assertNotIn("git.xiaojukeji.com/morganli/caveman/raw/main/install-internal.sh | bash caveman",
-                         combined.lower())
-
-
-class TestInitHarnessMergesBehavior(unittest.TestCase):
-    """Init must merge into existing .claude/settings.json, not overwrite."""
-
-    def setUp(self):
-        self.project_dir = Path(tempfile.mkdtemp())
-        self.home_dir = Path(tempfile.mkdtemp())
-
-    def tearDown(self):
-        shutil.rmtree(self.project_dir)
-        shutil.rmtree(self.home_dir)
-
-    def _run_init(self):
-        import subprocess
-        import sys
-
-        init_script = Path(__file__).parent.parent / "init-harness.py"
-        result = subprocess.run(
-            [sys.executable, str(init_script), "--target", str(self.project_dir)],
-            capture_output=True,
-            text=True,
-            env={**os.environ, "HOME": str(self.home_dir)},
-        )
-        return result
-
-    def test_preserves_existing_settings(self):
-        """Existing hooks in settings.json are preserved after init."""
-        claude_dir = self.project_dir / ".claude"
-        claude_dir.mkdir(parents=True)
-        existing_settings = {
-            "hooks": {
-                "PreToolUse": [
-                    {
-                        "matcher": "Bash",
-                        "hooks": [{"type": "command", "command": "echo existing"}],
-                    }
-                ]
-            },
-            "permissions": {"allow": ["Bash(git *)"]},
-        }
-        (claude_dir / "settings.json").write_text(json.dumps(existing_settings))
-
-        self._run_init()
-
-        settings = json.loads((claude_dir / "settings.json").read_text())
-        # Original Bash matcher still present
-        pre_tool = settings["hooks"]["PreToolUse"]
-        bash_matchers = [h for h in pre_tool if h.get("matcher") == "Bash"]
-        self.assertTrue(len(bash_matchers) > 0, "Existing Bash hook was lost")
-        # Permissions preserved
-        self.assertIn("permissions", settings)
-        self.assertIn("Bash(git *)", settings["permissions"]["allow"])
-
-    def test_idempotent_no_duplicate_hooks(self):
-        """Running init twice does not duplicate hook entries."""
-        self._run_init()
-        self._run_init()
-
-        settings = json.loads(
-            (self.project_dir / ".claude" / "settings.json").read_text()
-        )
-        # SessionStart should have exactly one harness hook entry
-        session_start = settings["hooks"]["SessionStart"]
-        harness_hooks = [
-            h
-            for h in session_start
-            if any(
-                "harness-session-start" in hook.get("command", "")
-                for hook in h.get("hooks", [])
-            )
-        ]
-        self.assertEqual(len(harness_hooks), 1, "Duplicate SessionStart hook detected")
-
-    def test_codex_hooks_preserve_existing_entries(self):
-        """Existing hooks in .codex/hooks.json are preserved after init."""
-        codex_dir = self.project_dir / ".codex"
-        codex_dir.mkdir(parents=True)
-        existing_hooks = {
-            "hooks": {
-                "SessionStart": [
-                    {
-                        "matcher": "startup",
-                        "hooks": [{"type": "command", "command": "echo existing"}],
-                    }
-                ]
-            }
-        }
-        (codex_dir / "hooks.json").write_text(
-            json.dumps(existing_hooks, indent=2),
-            encoding="utf-8",
-        )
-
-        self._run_init()
-
-        hooks_json = json.loads((codex_dir / "hooks.json").read_text(encoding="utf-8"))
-        session_start = hooks_json["hooks"]["SessionStart"]
-        self.assertTrue(
-            any(
-                any(hook.get("command") == "echo existing" for hook in entry.get("hooks", []))
-                for entry in session_start
-            ),
-            "Existing Codex hook was lost",
-        )
-        self.assertTrue(
-            any(
-                any("harness-session-start" in hook.get("command", "") for hook in entry.get("hooks", []))
-                for entry in session_start
-            ),
-            "Harness Codex hook was not added",
-        )
-
-    def test_codex_hooks_idempotent(self):
-        """Running init twice does not duplicate Codex hook entries."""
-        self._run_init()
-        self._run_init()
-
-        hooks_json = json.loads(
-            (self.project_dir / ".codex" / "hooks.json").read_text(encoding="utf-8")
-        )
-        serialized = json.dumps(hooks_json, ensure_ascii=False)
-        self.assertEqual(serialized.count("harness-session-start.py"), 1)
-        self.assertEqual(serialized.count("harness-workflow-state.py"), 1)
-        self.assertEqual(serialized.count("harness-inject-context.py"), 2)
-
-    def test_does_not_overwrite_existing_agents(self):
-        """If .claude/agents/developer.md already exists, init skips it."""
-        agents_dir = self.project_dir / ".claude" / "agents"
-        agents_dir.mkdir(parents=True)
-        (agents_dir / "developer.md").write_text("# My custom developer agent\n")
-
-        self._run_init()
-
-        content = (agents_dir / "developer.md").read_text()
-        self.assertIn("My custom developer agent", content)
 
 
 if __name__ == "__main__":

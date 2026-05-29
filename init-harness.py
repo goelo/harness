@@ -176,14 +176,11 @@ def create_harness_skeleton(target: Path) -> None:
     """Create .harness/ directory structure."""
     harness = target / ".harness"
 
-    (harness / "tasks").mkdir(parents=True, exist_ok=True)
-    (harness / "tasks" / "archive").mkdir(parents=True, exist_ok=True)
     (harness / "runtime" / "sessions").mkdir(parents=True, exist_ok=True)
-    (harness / "spec").mkdir(parents=True, exist_ok=True)
     (harness / "scripts").mkdir(parents=True, exist_ok=True)
+    create_docs_skeleton(target)
 
     _write_if_missing(harness / "workflow.md", WORKFLOW_MD)
-    _write_if_missing(harness / "spec" / "index.md", SPEC_INDEX_MD)
     _write_if_missing(harness / "verify.json", VERIFY_JSON_TEMPLATE)
 
     # Deploy real scripts from sibling harness_scripts/ when available
@@ -203,6 +200,36 @@ def create_harness_skeleton(target: Path) -> None:
 
     # Project-root .gitignore — append harness/python/node defaults if absent
     create_gitignore(target)
+
+
+def create_docs_skeleton(target: Path) -> None:
+    """Create docs/tasks and docs/standards without taking over project docs."""
+    docs = target / "docs"
+    tasks = docs / "tasks"
+    standards = docs / "standards"
+    docs.mkdir(parents=True, exist_ok=True)
+    tasks.mkdir(parents=True, exist_ok=True)
+    standards.mkdir(parents=True, exist_ok=True)
+    _write_if_missing(docs / "index.md", DOCS_INDEX_MD)
+    _write_if_missing(standards / "index.md", STANDARDS_INDEX_MD)
+    _append_harness_docs_index(docs / "index.md")
+
+
+def _append_harness_docs_index(path: Path) -> None:
+    content = path.read_text(encoding="utf-8") if path.is_file() else ""
+    if "## Harness" in content and "docs/tasks/" in content and "docs/standards/" in content:
+        return
+    section = """\
+
+## Harness
+
+| 目录 | 内容 |
+| --- | --- |
+| `docs/tasks/` | 需求开发任务包，每个子目录对应一次需求开发 |
+| `docs/standards/` | 团队长期工程规范，供需求开发过程自动注入上下文 |
+"""
+    sep = "" if content.endswith("\n") or not content else "\n"
+    path.write_text(content + sep + section.lstrip("\n"), encoding="utf-8")
 
 
 def create_gitignore(target: Path) -> None:
@@ -279,10 +306,19 @@ def create_claude_commands(target: Path) -> None:
 MANAGED_SKILL_MARKER = "<!-- harness-managed-skill -->"
 
 LEGACY_MANAGED_SKILL_MARKERS = {
+    "requirement-confirmation": (
+        "需求确认",
+        "development_intent",
+    ),
+    "requirement-development": (
+        "需求开发",
+        "task.py advance",
+    ),
     "harness-implement": (
         "Walks the AI through the full v1.6 harness TDD flow",
         "DeepSeek TUI does not receive Claude Code hook events",
         "Codex supports project hooks through `.codex/hooks.json`",
+        "requirement-development",
     ),
     "harness-configure-verify": (
         "Configure `.harness/verify.json` for the current project",
@@ -291,6 +327,7 @@ LEGACY_MANAGED_SKILL_MARKERS = {
     "grill-me": (
         "Interview me relentlessly about every aspect of this plan",
         "Ask the questions one at a time.",
+        "requirement-confirmation",
     ),
 }
 
@@ -301,7 +338,7 @@ def _looks_like_managed_skill(content: str, skill_name: str) -> bool:
         return False
     if MANAGED_SKILL_MARKER in content:
         return True
-    return any(marker in content for marker in LEGACY_MANAGED_SKILL_MARKERS[skill_name])
+    return any(marker in content for marker in LEGACY_MANAGED_SKILL_MARKERS.get(skill_name, ()))
 
 
 def _write_managed_skill(path: Path, content: str, skill_name: str) -> None:
@@ -317,7 +354,23 @@ def _write_managed_skill(path: Path, content: str, skill_name: str) -> None:
 
 def create_skill_files(skills_dir: Path, harness_implement: str | None = None) -> None:
     """Write harness skill files into a skills directory."""
-    harness_implement = harness_implement or SKILL_HARNESS_IMPLEMENT
+    requirement_confirmation_dir = skills_dir / "requirement-confirmation"
+    requirement_confirmation_dir.mkdir(parents=True, exist_ok=True)
+    _write_managed_skill(
+        requirement_confirmation_dir / "SKILL.md",
+        SKILL_REQUIREMENT_CONFIRMATION,
+        "requirement-confirmation",
+    )
+
+    requirement_development_dir = skills_dir / "requirement-development"
+    requirement_development_dir.mkdir(parents=True, exist_ok=True)
+    _write_managed_skill(
+        requirement_development_dir / "SKILL.md",
+        SKILL_REQUIREMENT_DEVELOPMENT,
+        "requirement-development",
+    )
+
+    harness_implement = harness_implement or SKILL_HARNESS_IMPLEMENT_COMPAT
     harness_skill_dir = skills_dir / "harness-implement"
     harness_skill_dir.mkdir(parents=True, exist_ok=True)
     _write_managed_skill(harness_skill_dir / "SKILL.md", harness_implement, "harness-implement")
@@ -332,7 +385,7 @@ def create_skill_files(skills_dir: Path, harness_implement: str | None = None) -
 
     grill_me_skill_dir = skills_dir / "grill-me"
     grill_me_skill_dir.mkdir(parents=True, exist_ok=True)
-    _write_managed_skill(grill_me_skill_dir / "SKILL.md", SKILL_GRILL_ME, "grill-me")
+    _write_managed_skill(grill_me_skill_dir / "SKILL.md", SKILL_GRILL_ME_COMPAT, "grill-me")
 
 
 def create_claude_skills(target: Path) -> None:
@@ -341,6 +394,8 @@ def create_claude_skills(target: Path) -> None:
 
 
 DEEPSEEK_SKILL_NAMES = (
+    "requirement-confirmation",
+    "requirement-development",
     "harness-implement",
     "harness-configure-verify",
     "grill-me",
@@ -362,7 +417,7 @@ def remove_managed_deepseek_skills() -> None:
 
 def create_codex_skills() -> None:
     """Write skill files for Codex."""
-    create_skill_files(Path.home() / ".codex" / "skills", SKILL_HARNESS_IMPLEMENT_CODEX)
+    create_skill_files(Path.home() / ".codex" / "skills", SKILL_HARNESS_IMPLEMENT_COMPAT)
 
 
 HARNESS_SECTION_MARKER = "# Agent Harness"
@@ -576,8 +631,28 @@ print("verify.py: real implementation not deployed", file=sys.stderr)
 sys.exit(1)
 """
 
+DOCS_INDEX_MD = """\
+# 文档索引
+
+项目文档通过本文件登记主要目录用途。
+
+## Harness
+
+| 目录 | 内容 |
+| --- | --- |
+| `docs/tasks/` | 需求开发任务包，每个子目录对应一次需求开发 |
+| `docs/standards/` | 团队长期工程规范，供需求开发过程自动注入上下文 |
+"""
+
+STANDARDS_INDEX_MD = """\
+# 团队工程规范索引
+
+此目录保存团队长期维护的工程规范。需求开发过程中会固定注入本索引文件，具体规范文件由任务的 `context.<role>.jsonl` 明确引用。
+"""
+
 VERIFY_JSON_TEMPLATE = """\
 {
+  "required": ["test", "scope"],
   "commands": {
     "lint": "",
     "type": "",
@@ -586,7 +661,8 @@ VERIFY_JSON_TEMPLATE = """\
   },
   "scope": {
     "denied": [
-      ".harness/runtime/**"
+      ".harness/runtime/**",
+      "docs/standards/**"
     ]
   }
 }
@@ -1546,8 +1622,528 @@ Node 项目常用 package scripts：
 ```
 """
 
+SKILL_REQUIREMENT_CONFIRMATION = """\
+---
+name: requirement-confirmation
+description: |
+  需求确认 skill。用于在需求开发前逐项确认开发意图、验收标准、边界条件、依赖关系和未决问题。
+  触发语包括 "需求确认"、"确认需求"、"grill me"、"先问清楚需求"、"需求还要再确认"。
+---
+
+# 需求确认
+
+<!-- harness-managed-skill -->
+
+该 skill 是 harness 需求开发前置环节。目标是让开发意图、验收标准、边界条件和关键依赖形成可核验记录，避免模型根据模糊描述自行补全。
+
+## 必须遵守
+
+每次只提出一个问题。
+
+每个问题都给出推荐回答，推荐回答应当基于已知需求文档和代码检查结果。
+
+能够通过检查仓库回答的问题，先检查仓库，再继续提问。
+
+即使 `design.md`、`spec.md` 或 `requirements.md` 内容完整，也必须先复述开发意图，并等待协作者确认。
+
+## 完成标准
+
+确认完成后，通过 harness 内部工具写入 `clarification.jsonl`，并生成 `clarification.md` 阅读快照。有效确认记录必须包含：
+
+| 字段 | 要求 |
+| --- | --- |
+| `developmentIntent` | 开发者理解的开发意图 |
+| `acceptanceCriteria` | 可验证的验收标准 |
+| `boundaries` | 明确的范围边界 |
+| `openQuestions` | 必须为空数组 |
+| `confirmed` | 必须为 `true` |
+| `confirmedBy` | 必须为 `collaborator` |
+| `sourceDoc` | 需求来源文件或 `inline-request` |
+| `sourceDocHash` | 需求来源内容哈希 |
+
+`clarification.jsonl` 是阶段推进门禁依据，`clarification.md` 只作为阅读快照。
+"""
+
+SKILL_REQUIREMENT_DEVELOPMENT = """\
+---
+name: requirement-development
+description: |
+  需求开发 skill。用于依据 design.md、spec.md、requirements.md 或协作者的内联需求，在 harness 项目中完成流程化开发。
+  触发语包括 "按 design.md 开发"、"按照需求开发"、"继续需求开发"、"走 harness 流程"、"implement design.md"。
+---
+
+# 需求开发
+
+<!-- harness-managed-skill -->
+
+该 skill 负责组织 harness 需求开发流程。协作者通过自然语言表达任务，模型使用 `.harness/scripts/task.py`、`.harness/scripts/verify.py` 和项目 hooks 维护阶段状态与证据文件。
+
+## 前置要求
+
+进入开发前必须先使用 `requirement-confirmation`。如果当前任务尚未生成有效 `clarification.jsonl` 确认记录，应当自动转入需求确认。
+
+即使需求文档完整，也至少复述开发意图，确认验收标准和范围边界。
+
+## 阶段顺序
+
+| 阶段 | 责任角色 | 必要证据 |
+| --- | --- | --- |
+| `clarify` | 主会话 | `clarification.jsonl`、`clarification.md` |
+| `plan` | `architect` | `implementation-plan.md`、`scope.json`、三份 `context.<role>.jsonl` |
+| `red` | `tester` | `test-result.red.json` |
+| `green` | `developer` | `test-result.green.json` |
+| `review` | `architect` | `review-result.json` |
+| `validate` | `tester` | `verify-result.json` |
+| `done` | 主会话 | 任务可以归档 |
+
+阶段推进只能通过 `task.py advance <phase>` 完成。`task.json`、`clarification.jsonl`、`clarification.md`、`test-result.red.json`、`test-result.green.json`、`review-result.json` 和 `verify-result.json` 属于受控文件，由 harness 工具生成。
+
+## 计划文件
+
+`implementation-plan.md` 只保存实现计划，固定包含以下章节：
+
+```markdown
+# 实现计划
+
+## 开发意图摘要
+## 影响范围
+## 技术方案
+## 可测试契约
+## Slice 顺序
+## 验证方式
+## 已知限制
+```
+
+## 执行规则
+
+默认使用 `agent-team` 执行模式。每个阶段按需调用对应角色，角色会通过 hook 注入 `docs/standards/index.md`、`clarification.md`、`implementation-plan.md` 和角色自己的 `context.<role>.jsonl`。
+
+如果当前运行环境没有子代理能力，可以降级为 `single-session`，并在 `task.json.executionModeFallbackReason` 记录原因。
+
+每个阶段完成后必须写入对应证据文件，再通过 `task.py advance` 进入下一阶段。最终使用 `verify.py all` 生成 `verify-result.json`，通过后才能进入 `done`。
+"""
+
+SKILL_HARNESS_IMPLEMENT_COMPAT = """\
+---
+name: harness-implement
+description: |
+  兼容入口。旧触发语 "harness-implement"、"按 design.md 开发"、"implement design.md" 会转入 requirement-development。
+---
+
+# Harness Implement Compatibility
+
+<!-- harness-managed-skill -->
+
+`harness-implement` 是旧名称。当前正式入口是 `requirement-development`，中文名称为需求开发 skill。
+
+收到实现类请求时，按照 `requirement-development` 执行，并先转入 `requirement-confirmation` 完成需求确认。
+"""
+
+SKILL_GRILL_ME_COMPAT = """\
+---
+name: grill-me
+description: 兼容入口。旧触发语 "grill me" 会转入 requirement-confirmation，也就是需求确认 skill。
+---
+
+# Grill Me Compatibility
+
+<!-- harness-managed-skill -->
+
+`grill-me` 是旧名称。当前正式入口是 `requirement-confirmation`，中文名称为需求确认 skill。
+
+继续保持每次只问一个问题，每个问题给出推荐回答，并以 `clarification.jsonl` 作为需求确认门禁依据。
+"""
+
+AGENT_ARCHITECT = """\
+---
+name: architect
+description: 负责 plan 和 review 阶段，编写实现计划、维护 scope，并检查实现是否符合需求确认结果。
+tools: Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch
+---
+# Architect Agent
+
+读取 `clarification.md`、`implementation-plan.md`、`docs/standards/index.md` 和 `context.architect.jsonl` 中明确引用的文件。
+
+在 `plan` 阶段，编写 `implementation-plan.md` 和 `scope.json`。计划文件只能保存实现计划，必须包含固定章节：开发意图摘要、影响范围、技术方案、可测试契约、Slice 顺序、验证方式、已知限制。
+
+在 `review` 阶段，检查当前变更是否符合需求确认、实现计划和团队规范，并通过 `task.py review record` 写入 `review-result.json`。需要修正代码时保持测试通过。
+
+禁止手工编辑受控文件：`task.json`、`clarification.jsonl`、`clarification.md`、`test-result.red.json`、`test-result.green.json`、`review-result.json`、`verify-result.json`。
+"""
+
+AGENT_DEVELOPER = """\
+---
+name: developer
+description: 负责 green 阶段，根据 RED 测试实现最小代码变更。
+tools: Read, Write, Edit, Bash, Glob, Grep
+---
+# Developer Agent
+
+读取 `clarification.md`、`implementation-plan.md`、`docs/standards/index.md` 和 `context.developer.jsonl` 中明确引用的文件。
+
+在 `green` 阶段，先确认 `test-result.red.json` 已经记录目标测试的预期失败，再实现代码使同一组目标测试通过。通过后使用 `verify.py green` 写入 `test-result.green.json`。
+
+实现必须遵守 `scope.json` 的变更范围。发现需求、计划或测试之间存在冲突时，停止实现并返回主会话处理。
+
+禁止执行 git commit，禁止手工编辑 harness 受控文件。
+"""
+
+AGENT_TESTER = """\
+---
+name: tester
+description: 负责 red 和 validate 阶段，编写失败测试、补充边界测试并生成验证证据。
+tools: Read, Write, Edit, Bash, Glob, Grep
+---
+# Tester Agent
+
+读取 `clarification.md`、`implementation-plan.md`、`docs/standards/index.md` 和 `context.tester.jsonl` 中明确引用的文件。
+
+在 `red` 阶段，根据可测试契约编写目标测试，并使用 `verify.py red` 写入 `test-result.red.json`。该阶段要求目标测试出现预期失败。
+
+在 `validate` 阶段，补充边界测试并运行必要验证，最终由主会话运行 `verify.py all` 写入 `verify-result.json`。
+
+禁止执行 git commit，禁止手工编辑 harness 受控文件。
+"""
+
+CMD_CONTINUE = """\
+查看当前需求开发状态。
+
+读取 `.harness/runtime/sessions/` 中的当前任务指针，展示 `docs/tasks/<task>/task.json` 的 `status`、`phase` 和下一阶段需要的证据文件。
+"""
+
+CMD_FINISH = """\
+归档当前需求开发任务。
+
+任务必须先进入 `phase=done`，并且 `verify-result.json.success=true`。归档后任务移动到 `docs/tasks/archive/YYYY-MM/<task>/`。
+"""
+
+HOOK_INJECT_CONTEXT = '''\
+#!/usr/bin/env python3
+"""PreToolUse hook: inject phase-safe role context."""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+
+LOCAL_CONTEXT_KEY = "local"
+KNOWN_ROLES = ("architect", "developer", "tester")
+PHASE_ROLE = {
+    "plan": "architect",
+    "red": "tester",
+    "green": "developer",
+    "review": "architect",
+    "validate": "tester",
+}
+CONTROLLED_SUFFIXES = (
+    "task.json",
+    "clarification.jsonl",
+    "clarification.md",
+    "test-result.red.json",
+    "test-result.green.json",
+    "review-result.json",
+    "verify-result.json",
+)
+
+
+def find_project_root(start: Path) -> Path | None:
+    cur = start.resolve()
+    while cur != cur.parent:
+        if (cur / ".harness").is_dir():
+            return cur
+        cur = cur.parent
+    return None
+
+
+def resolve_session_key(data: dict) -> str | None:
+    for key in ("session_id", "sessionId"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return os.environ.get("HARNESS_CONTEXT_ID")
+
+
+def task_dir_from_ref(root: Path, task_ref: str) -> Path | None:
+    task_dir = root / task_ref
+    return task_dir if task_dir.is_dir() else None
+
+
+def unique_in_progress_task_dir(root: Path) -> Path | None:
+    tasks_dir = root / "docs" / "tasks"
+    if not tasks_dir.is_dir():
+        return None
+    matches = []
+    for task_dir in tasks_dir.iterdir():
+        if not task_dir.is_dir() or task_dir.name == "archive":
+            continue
+        task_json = task_dir / "task.json"
+        if not task_json.is_file():
+            continue
+        data = json.loads(task_json.read_text(encoding="utf-8"))
+        if data.get("status") == "in_progress":
+            matches.append(task_dir)
+    return matches[0] if len(matches) == 1 else None
+
+
+def get_active_task_dir(root: Path, data: dict) -> Path | None:
+    sessions_dir = root / ".harness" / "runtime" / "sessions"
+    key = resolve_session_key(data)
+    candidates = []
+    if key:
+        candidates.append(sessions_dir / f"{key}.json")
+    candidates.append(sessions_dir / f"{LOCAL_CONTEXT_KEY}.json")
+    for path in candidates:
+        if not path.is_file():
+            continue
+        session = json.loads(path.read_text(encoding="utf-8"))
+        task_ref = session.get("current_task")
+        if task_ref:
+            task_dir = task_dir_from_ref(root, task_ref)
+            if task_dir:
+                return task_dir
+    return unique_in_progress_task_dir(root)
+
+
+def read_file_safe(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except (FileNotFoundError, PermissionError):
+        return ""
+
+
+def read_jsonl_context(root: Path, jsonl_path: Path) -> list[tuple[str, str]]:
+    if not jsonl_path.is_file():
+        return []
+    results = []
+    for line in jsonl_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if "_example" in item:
+            continue
+        file_path = item.get("file")
+        if not isinstance(file_path, str) or not file_path:
+            continue
+        content = read_file_safe(root / file_path)
+        if content:
+            results.append((file_path, content))
+    return results
+
+
+def task_phase(task_dir: Path) -> str:
+    data = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
+    return data.get("phase", "unknown")
+
+
+def build_role_context(root: Path, task_dir: Path, role: str) -> str:
+    parts = []
+    standards = read_file_safe(root / "docs" / "standards" / "index.md")
+    if standards:
+        parts.append(f"=== docs/standards/index.md ===\\n{standards}")
+    clarification = read_file_safe(task_dir / "clarification.md")
+    if clarification:
+        parts.append(f"=== clarification.md ===\\n{clarification}")
+    plan = read_file_safe(task_dir / "implementation-plan.md")
+    if plan:
+        parts.append(f"=== implementation-plan.md ===\\n{plan}")
+    for file_path, content in read_jsonl_context(root, task_dir / f"context.{role}.jsonl"):
+        parts.append(f"=== {file_path} ===\\n{content}")
+    return "\\n\\n".join(parts)
+
+
+def infer_role(tool_input: dict) -> str:
+    direct = tool_input.get("subagent_type") or tool_input.get("subagentType") or tool_input.get("role") or ""
+    if direct in KNOWN_ROLES:
+        return direct
+    for key in ("task_name", "name", "target"):
+        value = tool_input.get(key)
+        if not isinstance(value, str):
+            continue
+        lowered = value.lower()
+        for role in KNOWN_ROLES:
+            if role in lowered:
+                return role
+    return ""
+
+
+def prompt_field(tool_input: dict) -> str:
+    if "prompt" in tool_input:
+        return "prompt"
+    if "message" in tool_input:
+        return "message"
+    return "prompt"
+
+
+def controlled_edit_target(tool_input: dict) -> str | None:
+    candidates = []
+    for key in ("file_path", "path", "target_file"):
+        value = tool_input.get(key)
+        if isinstance(value, str):
+            candidates.append(value)
+    for value in candidates:
+        normalized = value.replace("\\\\", "/")
+        if "/docs/tasks/" in normalized or normalized.startswith("docs/tasks/"):
+            if any(normalized.endswith(suffix) for suffix in CONTROLLED_SUFFIXES):
+                return value
+    return None
+
+
+def emit_block(reason: str) -> int:
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "additionalContext": reason,
+        }
+    }
+    print(json.dumps(output, ensure_ascii=False))
+    return 0
+
+
+def main() -> int:
+    try:
+        data = json.load(sys.stdin)
+    except (json.JSONDecodeError, ValueError):
+        return 0
+    tool_input = data.get("tool_input", {})
+    target = controlled_edit_target(tool_input)
+    if target:
+        return emit_block(f"受控文件 {target} 只能通过 harness 内部工具生成，禁止手工编辑。")
+    role = infer_role(tool_input)
+    if role not in KNOWN_ROLES:
+        return 0
+    root = find_project_root(Path(data.get("cwd") or "."))
+    if root is None:
+        return 0
+    task_dir = get_active_task_dir(root, data)
+    if task_dir is None:
+        return 0
+    phase = task_phase(task_dir)
+    expected = PHASE_ROLE.get(phase)
+    if expected != role:
+        return emit_block(f"当前阶段 {phase} 不允许调用 {role}。应执行的角色职责是 {expected or '无开发角色'}。")
+    context = build_role_context(root, task_dir, role)
+    if not context:
+        return 0
+    field = prompt_field(tool_input)
+    original = tool_input.get(field, "")
+    updated = {**tool_input, field: f"## Injected Context\\n\\n{context}\\n\\n---\\n\\n## Task\\n\\n{original}"}
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": updated,
+        }
+    }
+    print(json.dumps(output, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+'''
+
+WORKFLOW_MD = """\
+# Harness 阶段说明
+
+[workflow-phase:no_task]
+当前没有激活的需求开发任务。收到需求开发请求时，先进入 `requirement-confirmation`，确认开发意图、验收标准和范围边界。
+[/workflow-phase:no_task]
+
+[workflow-phase:clarify]
+当前处于需求确认阶段。有效门禁是 `clarification.jsonl` 中最近一条 `event=confirm` 记录，且 `openQuestions=[]`、`confirmed=true`、`confirmedBy=collaborator`。
+[/workflow-phase:clarify]
+
+[workflow-phase:plan]
+当前处于实现计划阶段。只允许调用 `architect`，生成 `implementation-plan.md`、`scope.json`，并补齐三份 `context.<role>.jsonl` 的真实文件引用。
+[/workflow-phase:plan]
+
+[workflow-phase:red]
+当前处于 RED 阶段。只允许调用 `tester`，目标是写出预期失败测试，并通过 `verify.py red` 写入 `test-result.red.json`。
+[/workflow-phase:red]
+
+[workflow-phase:green]
+当前处于 GREEN 阶段。只允许调用 `developer`，目标是让 RED 阶段同一组目标测试通过，并通过 `verify.py green` 写入 `test-result.green.json`。
+[/workflow-phase:green]
+
+[workflow-phase:review]
+当前处于 REVIEW 阶段。只允许调用 `architect`，检查需求符合性和代码质量，并通过 `task.py review record` 写入 `review-result.json`。
+[/workflow-phase:review]
+
+[workflow-phase:validate]
+当前处于 VALIDATE 阶段。只允许调用 `tester`，补充验证后由主会话运行 `verify.py all` 写入 `verify-result.json`。
+[/workflow-phase:validate]
+
+[workflow-phase:done]
+任务已经完成验证，可以归档。
+[/workflow-phase:done]
+
+[workflow-phase:archived]
+任务已经归档。
+[/workflow-phase:archived]
+"""
 
 HARNESS_SECTION = """\
+# Agent Harness
+
+本项目使用 harness 支持流程化需求开发。协作者使用自然语言表达任务，模型通过内部脚本维护状态和证据文件。
+
+## 自然语言入口
+
+| 表达 | 处理方式 |
+| --- | --- |
+| 按 `design.md` 开发 | 进入 `requirement-development` |
+| 继续需求开发 | 读取当前任务并推进下一阶段 |
+| 查看当前需求开发状态 | 读取 `task.json` 的 `status` 和 `phase` |
+| 归档当前任务 | 在 `phase=done` 后移动到 `docs/tasks/archive/` |
+
+## 目录约定
+
+任务包保存在 `docs/tasks/<task>/`。团队工程规范保存在 `docs/standards/`。`docs/index.md` 记录这些目录用途。
+
+## 阶段顺序
+
+`task.json.status` 表示任务大状态，`task.json.phase` 表示细阶段。阶段顺序固定为：
+
+```text
+clarify -> plan -> red -> green -> review -> validate -> done -> archived
+```
+
+阶段推进只能通过 `python3 .harness/scripts/task.py advance <phase>` 完成。
+
+## 需求确认
+
+需求开发前必须先完成 `requirement-confirmation`。即使需求文档完整，也要复述开发意图、验收标准和边界条件，并等待协作者确认。
+
+`clarification.jsonl` 是需求确认门禁依据，`clarification.md` 是阅读快照。
+
+## 角色职责
+
+| 阶段 | 角色 | 主要产物 |
+| --- | --- | --- |
+| `plan` | `architect` | `implementation-plan.md`、`scope.json` |
+| `red` | `tester` | `test-result.red.json` |
+| `green` | `developer` | `test-result.green.json` |
+| `review` | `architect` | `review-result.json` |
+| `validate` | `tester` | `verify-result.json` |
+
+hooks 会根据 `phase` 限制角色调用，并注入 `docs/standards/index.md`、`clarification.md`、`implementation-plan.md` 和角色专属 `context.<role>.jsonl`。
+
+## 受控文件
+
+以下文件只能由 harness 内部工具生成或更新：`task.json`、`clarification.jsonl`、`clarification.md`、`test-result.red.json`、`test-result.green.json`、`review-result.json`、`verify-result.json`。
+
+主会话负责最终验证和 git 提交，子代理负责阶段内专业任务。
+"""
+
+
+LEGACY_HARNESS_SECTION = """\
 # Agent Harness
 
 This project uses a 3-role agent harness for stateful AI collaboration.
@@ -1859,8 +2455,10 @@ def main():
     caveman_status = install_caveman(skip=args.no_caveman, dry_run=False)
 
     print(f"✓ Harness initialized in {target}")
-    print(f"  .harness/  — task state, workflow, spec")
-    print(f"  .claude/   — hooks, agents, commands (merged)")
+    print(f"  .harness/  — scripts, workflow, verification config")
+    print(f"  docs/tasks/ — requirement development task packages")
+    print(f"  docs/standards/ — team engineering standards")
+    print(f"  .claude/   — hooks, agents, commands, skills (merged)")
     print(f"  .codex/    — hooks (merged)")
     print(f"  ~/.codex/skills/ — Codex skills (created if missing)")
     print(f"  CLAUDE.md  — harness conventions (created or appended)")
