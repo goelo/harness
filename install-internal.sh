@@ -21,8 +21,8 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Config (env-overridable)
 # ---------------------------------------------------------------------------
-HARNESS_REPO="${HARNESS_REPO:-git@github.com:goelo/harness.git}"
-HARNESS_BRANCH="${HARNESS_BRANCH:-master}"
+HARNESS_REPO="${HARNESS_REPO:-https://github.com/goelo/harness.git}"
+HARNESS_BRANCH="${HARNESS_BRANCH:-main}"
 HARNESS_TARGET="${HARNESS_TARGET:-$PWD}"
 
 # ---------------------------------------------------------------------------
