@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
-"""SessionStart hook — injects active task, status, commands, and role list.
+"""SessionStart hook: inject current harness task summary."""
 
-Lightweight version: no spec indexes, no workflow text dump, no marketing banner.
-
-Also exports HARNESS_CONTEXT_ID to CLAUDE_ENV_FILE so that subsequent Bash tool
-invocations (e.g. `python3 .harness/scripts/task.py current`) can resolve the
-session pointer.
-"""
 from __future__ import annotations
 
 import json
@@ -18,7 +12,7 @@ from pathlib import Path
 LOCAL_CONTEXT_KEY = "local"
 
 
-def find_harness_root(start: Path) -> Path | None:
+def find_project_root(start: Path) -> Path | None:
     cur = start.resolve()
     while cur != cur.parent:
         if (cur / ".harness").is_dir():
@@ -29,21 +23,13 @@ def find_harness_root(start: Path) -> Path | None:
 
 def resolve_session_key(data: dict) -> str | None:
     for key in ("session_id", "sessionId"):
-        val = data.get(key)
-        if isinstance(val, str) and val.strip():
-            return val.strip()
-    env_key = os.environ.get("HARNESS_CONTEXT_ID")
-    if env_key:
-        return env_key
-    return None
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return os.environ.get("HARNESS_CONTEXT_ID")
 
 
 def export_context_id_to_env_file(context_key: str | None) -> None:
-    """Append `export HARNESS_CONTEXT_ID=...` to CLAUDE_ENV_FILE.
-
-    Without this, Bash tool invocations from the same Claude Code session
-    (e.g. `task.py current`) don't see the session id and fail.
-    """
     if not context_key:
         return
     env_file = os.environ.get("CLAUDE_ENV_FILE")
@@ -56,107 +42,88 @@ def export_context_id_to_env_file(context_key: str | None) -> None:
         pass
 
 
-def get_active_task_info(root: Path, data: dict) -> dict | None:
-    sessions_dir = root / ".harness" / "runtime" / "sessions"
-    if not sessions_dir.is_dir():
-        return get_unique_in_progress_task_info(root)
-
-    key = resolve_session_key(data)
-    if key:
-        candidate = sessions_dir / f"{key}.json"
-        if candidate.is_file():
-            task_info = task_info_from_session_file(root, candidate)
-            if task_info:
-                return task_info
-
-    local_session = sessions_dir / f"{LOCAL_CONTEXT_KEY}.json"
-    if local_session.is_file():
-        task_info = task_info_from_session_file(root, local_session)
-        if task_info:
-            return task_info
-
-    files = list(sessions_dir.glob("*.json"))
-    if len(files) == 1:
-        task_info = task_info_from_session_file(root, files[0])
-        if task_info:
-            return task_info
-
-    return get_unique_in_progress_task_info(root)
-
-
-def task_info_from_session_file(root: Path, session_file: Path) -> dict | None:
-    session = json.loads(session_file.read_text(encoding="utf-8"))
-    task_ref = session.get("current_task")
-    if not task_ref:
-        return None
-    return task_info_from_ref(root, task_ref)
-
-
 def task_info_from_ref(root: Path, task_ref: str) -> dict | None:
     task_dir = root / task_ref
     if not task_dir.is_dir():
         return None
-
     task_json = task_dir / "task.json"
     if not task_json.is_file():
-        return {"title": task_dir.name, "status": "unknown", "path": task_ref}
-
-    task_data = json.loads(task_json.read_text(encoding="utf-8"))
+        return {"title": task_dir.name, "path": task_ref, "status": "unknown", "phase": "unknown"}
+    data = json.loads(task_json.read_text(encoding="utf-8"))
     return {
-        "title": task_data.get("title", task_dir.name),
-        "status": task_data.get("status", "unknown"),
+        "title": data.get("title", task_dir.name),
         "path": task_ref,
+        "status": data.get("status", "unknown"),
+        "phase": data.get("phase", "unknown"),
+        "executionMode": data.get("executionMode", "unknown"),
     }
 
 
-def get_unique_in_progress_task_info(root: Path) -> dict | None:
-    tasks_dir = root / ".harness" / "tasks"
+def get_active_task(root: Path, data: dict) -> dict | None:
+    sessions_dir = root / ".harness" / "runtime" / "sessions"
+    key = resolve_session_key(data)
     candidates = []
+    if key:
+        candidates.append(sessions_dir / f"{key}.json")
+    candidates.append(sessions_dir / f"{LOCAL_CONTEXT_KEY}.json")
+    for path in candidates:
+        if not path.is_file():
+            continue
+        session = json.loads(path.read_text(encoding="utf-8"))
+        task_ref = session.get("current_task")
+        if task_ref:
+            task = task_info_from_ref(root, task_ref)
+            if task:
+                return task
+    return unique_in_progress_task(root)
+
+
+def unique_in_progress_task(root: Path) -> dict | None:
+    tasks_dir = root / "docs" / "tasks"
     if not tasks_dir.is_dir():
         return None
+    refs = []
     for task_dir in tasks_dir.iterdir():
         if not task_dir.is_dir() or task_dir.name == "archive":
             continue
         task_json = task_dir / "task.json"
         if not task_json.is_file():
             continue
-        try:
-            data = json.loads(task_json.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            continue
+        data = json.loads(task_json.read_text(encoding="utf-8"))
         if data.get("status") == "in_progress":
-            candidates.append(f".harness/tasks/{task_dir.name}")
-    if len(candidates) != 1:
-        return None
-    return task_info_from_ref(root, candidates[0])
+            refs.append(f"docs/tasks/{task_dir.name}")
+    return task_info_from_ref(root, refs[0]) if len(refs) == 1 else None
 
 
-def build_context(root: Path, task_info: dict | None) -> str:
+def build_context(task: dict | None) -> str:
     parts = []
-
-    if task_info:
+    if task:
         parts.append(
-            f"Active task: {task_info['title']} ({task_info['status']})\n"
-            f"Path: {task_info['path']}"
+            f"Active task: {task['title']} ({task['status']})\n"
+            f"Phase: {task['phase']}\n"
+            f"Execution mode: {task['executionMode']}\n"
+            f"Path: {task['path']}\n"
+            "Required skill: requirement-development\n"
+            "继续当前任务时必须使用需求开发 skill 推进阶段，禁止退回原生直接开发流程。"
         )
     else:
         parts.append("No active task.")
 
     parts.append(
-        "\nAvailable commands:\n"
-        "- /harness:continue — check current state and next steps\n"
-        "- /harness:finish — verify clean state, archive task, write summary"
+        "\nNatural language entries:\n"
+        "- 按 design.md 开发\n"
+        "- 继续需求开发\n"
+        "- 查看当前需求开发状态\n"
+        "- 归档当前任务"
     )
-
     parts.append(
-        "\nAgent roles:\n"
-        "- research  — search and persist findings to research/*.md\n"
-        "- architect — design decisions, writes info.md (Plan phase)\n"
-        "- developer — implement features (no commit)\n"
-        "- reviewer  — code review and self-fix on diff (no commit)\n"
-        "- qa        — write tests, edge cases, quality (no commit)"
+        "\nHarness roles:\n"
+        "- requirement-confirmation: confirm intent, acceptance criteria, and boundaries\n"
+        "- requirement-development: orchestrate phase progression\n"
+        "- architect: doc-plan and review\n"
+        "- tester: RED and validate\n"
+        "- developer: GREEN implementation"
     )
-
     return "\n".join(parts)
 
 
@@ -165,25 +132,17 @@ def main() -> int:
         data = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
         data = {}
-
-    cwd = data.get("cwd") or "."
-    root = find_harness_root(Path(cwd))
+    root = find_project_root(Path(data.get("cwd") or "."))
     if root is None:
         return 0
-
-    # Export session id so Bash tool can run task.py with session identity
     export_context_id_to_env_file(resolve_session_key(data))
-
-    task_info = get_active_task_info(root, data)
-    context = build_context(root, task_info)
-
     output = {
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",
-            "additionalContext": context,
+            "additionalContext": build_context(get_active_task(root, data)),
         }
     }
-    print(json.dumps(output))
+    print(json.dumps(output, ensure_ascii=False))
     return 0
 
 

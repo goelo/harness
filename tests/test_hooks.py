@@ -1,10 +1,6 @@
-"""TDD tests for hook scripts — Slice 3 (v1.1 with 5 roles).
+"""Tests for harness hook scripts under docs/tasks state machine."""
 
-Tests simulate Claude Code hook behavior:
-  stdin = JSON → script → stdout = JSON with hookSpecificOutput.
-
-Each hook is tested through its subprocess interface.
-"""
+from __future__ import annotations
 
 import json
 import os
@@ -17,7 +13,6 @@ from pathlib import Path
 
 
 def _run_hook(hook_path: Path, stdin_data: dict, cwd: str | None = None) -> dict:
-    """Run a hook script with JSON stdin, return parsed stdout."""
     result = subprocess.run(
         [sys.executable, str(hook_path)],
         input=json.dumps(stdin_data),
@@ -32,163 +27,101 @@ def _run_hook(hook_path: Path, stdin_data: dict, cwd: str | None = None) -> dict
     return json.loads(result.stdout)
 
 
-class TestWorkflowStateHook(unittest.TestCase):
-    """workflow-state hook emits correct <workflow-state> based on task status."""
-
+class HookTestCase(unittest.TestCase):
     def setUp(self):
         self.project_dir = Path(tempfile.mkdtemp())
         harness = self.project_dir / ".harness"
         (harness / "runtime" / "sessions").mkdir(parents=True)
-        (harness / "tasks").mkdir(parents=True)
-
-        # Write workflow.md with state blocks
-        (harness / "workflow.md").write_text(
-            "[workflow-state:no_task]\nNo active task. Create one.\n[/workflow-state:no_task]\n\n"
-            "[workflow-state:planning]\nTask in planning. Confirm design.md.\n[/workflow-state:planning]\n\n"
-            "[workflow-state:in_progress]\nTask active. Dispatch developer.\n[/workflow-state:in_progress]\n",
-            encoding="utf-8",
+        (self.project_dir / "docs" / "tasks").mkdir(parents=True)
+        (self.project_dir / "docs" / "standards").mkdir(parents=True)
+        (self.project_dir / "docs" / "standards" / "index.md").write_text(
+            "# 团队工程规范\n使用 Go 单元测试。\n", encoding="utf-8"
         )
 
+    def tearDown(self):
+        shutil.rmtree(self.project_dir)
+
+    def write_task(self, phase: str = "green") -> Path:
+        task_dir = self.project_dir / "docs" / "tasks" / "05-28-order"
+        task_dir.mkdir(parents=True, exist_ok=True)
+        (task_dir / "task.json").write_text(
+            json.dumps(
+                {
+                    "status": "in_progress",
+                    "phase": phase,
+                    "title": "订单超时控制",
+                    "executionMode": "agent-team",
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        (task_dir / "clarification.md").write_text("# 需求确认\n\n开发意图已确认。\n", encoding="utf-8")
+        (task_dir / "implementation-plan.md").write_text("# 实现计划\n\n使用 PostgreSQL。\n", encoding="utf-8")
+        (self.project_dir / "src").mkdir(exist_ok=True)
+        (self.project_dir / "src" / "order.py").write_text("x = 1\n", encoding="utf-8")
+        (self.project_dir / "tests").mkdir(exist_ok=True)
+        (self.project_dir / "tests" / "test_order.py").write_text("def test_order(): pass\n", encoding="utf-8")
+        (task_dir / "scope.json").write_text(
+            json.dumps({"allowed": ["src/**", "tests/**"], "denied": []}),
+            encoding="utf-8",
+        )
+        for role in ("architect", "developer", "tester"):
+            (task_dir / f"context.{role}.jsonl").write_text(
+                '{"file":"src/order.py","reason":"相关实现"}\n',
+                encoding="utf-8",
+            )
+        (self.project_dir / ".harness" / "runtime" / "sessions" / "sess-1.json").write_text(
+            json.dumps({"current_task": "docs/tasks/05-28-order"}),
+            encoding="utf-8",
+        )
+        return task_dir
+
+
+class TestWorkflowStateHook(HookTestCase):
+    def setUp(self):
+        super().setUp()
+        (self.project_dir / ".harness" / "workflow.md").write_text(
+            "[workflow-phase:no_task]\n没有当前任务。\n[/workflow-phase:no_task]\n\n"
+            "[workflow-phase:clarify]\n当前处于需求确认阶段。\n[/workflow-phase:clarify]\n\n"
+            "[workflow-phase:green]\n当前处于编码实现阶段。\n[/workflow-phase:green]\n",
+            encoding="utf-8",
+        )
         self.hook_path = Path(__file__).parent.parent / "harness_hooks" / "harness-workflow-state.py"
 
-    def tearDown(self):
-        shutil.rmtree(self.project_dir)
-
-    def test_no_task_emits_no_task_state(self):
+    def test_no_task_uses_no_task_phase(self):
         output = _run_hook(self.hook_path, {"cwd": str(self.project_dir)})
-        ctx = output.get("hookSpecificOutput", {}).get("additionalContext", "")
+        ctx = output["hookSpecificOutput"]["additionalContext"]
         self.assertIn("<workflow-state>", ctx)
-        self.assertIn("No active task", ctx)
+        self.assertIn("没有当前任务", ctx)
 
-    def test_planning_task_emits_planning_state(self):
-        harness = self.project_dir / ".harness"
-        task_dir = harness / "tasks" / "05-19-test"
-        task_dir.mkdir(parents=True)
-        (task_dir / "task.json").write_text(
-            json.dumps({"status": "planning", "title": "Test"}), encoding="utf-8"
-        )
-        session_dir = harness / "runtime" / "sessions"
-        (session_dir / "test-session.json").write_text(
-            json.dumps({"current_task": ".harness/tasks/05-19-test"}), encoding="utf-8"
-        )
-
-        output = _run_hook(
-            self.hook_path,
-            {"cwd": str(self.project_dir), "session_id": "test-session"},
-        )
-        ctx = output.get("hookSpecificOutput", {}).get("additionalContext", "")
-        self.assertIn("planning", ctx.lower())
-        self.assertIn("Confirm design.md", ctx)
-
-    def test_in_progress_emits_in_progress_state(self):
-        harness = self.project_dir / ".harness"
-        task_dir = harness / "tasks" / "05-19-work"
-        task_dir.mkdir(parents=True)
-        (task_dir / "task.json").write_text(
-            json.dumps({"status": "in_progress", "title": "Work"}), encoding="utf-8"
-        )
-        session_dir = harness / "runtime" / "sessions"
-        (session_dir / "test-session.json").write_text(
-            json.dumps({"current_task": ".harness/tasks/05-19-work"}), encoding="utf-8"
-        )
-
-        output = _run_hook(
-            self.hook_path,
-            {"cwd": str(self.project_dir), "session_id": "test-session"},
-        )
-        ctx = output.get("hookSpecificOutput", {}).get("additionalContext", "")
-        self.assertIn("in_progress", ctx)
-        self.assertIn("Dispatch developer", ctx)
-
-    def test_unique_in_progress_task_emits_in_progress_without_session(self):
-        """Codex may omit session_id; a single in_progress task is enough context."""
-        harness = self.project_dir / ".harness"
-        task_dir = harness / "tasks" / "05-19-codex-work"
-        task_dir.mkdir(parents=True)
-        (task_dir / "task.json").write_text(
-            json.dumps({"status": "in_progress", "title": "Codex work"}),
-            encoding="utf-8",
-        )
-
-        output = _run_hook(self.hook_path, {"cwd": str(self.project_dir)})
-        ctx = output.get("hookSpecificOutput", {}).get("additionalContext", "")
-        self.assertIn("in_progress", ctx)
-        self.assertIn("Dispatch developer", ctx)
+    def test_task_uses_phase_not_status(self):
+        self.write_task(phase="green")
+        output = _run_hook(self.hook_path, {"cwd": str(self.project_dir), "session_id": "sess-1"})
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("Phase: green", ctx)
+        self.assertIn("编码实现阶段", ctx)
+        self.assertIn("Required skill: requirement-development", ctx)
 
 
-class TestSessionStartHook(unittest.TestCase):
-    """session-start hook injects active task info and role list."""
-
+class TestSessionStartHook(HookTestCase):
     def setUp(self):
-        self.project_dir = Path(tempfile.mkdtemp())
-        harness = self.project_dir / ".harness"
-        (harness / "runtime" / "sessions").mkdir(parents=True)
-        (harness / "tasks").mkdir(parents=True)
-        (harness / "workflow.md").write_text("# Workflow\n", encoding="utf-8")
-
+        super().setUp()
         self.hook_path = Path(__file__).parent.parent / "harness_hooks" / "harness-session-start.py"
 
-    def tearDown(self):
-        shutil.rmtree(self.project_dir)
-
-    def test_emits_session_start_event(self):
-        output = _run_hook(self.hook_path, {"cwd": str(self.project_dir)})
-        self.assertEqual(
-            output.get("hookSpecificOutput", {}).get("hookEventName"), "SessionStart"
-        )
-
-    def test_includes_all_5_roles(self):
-        """Output mentions all 5 agent roles."""
-        output = _run_hook(self.hook_path, {"cwd": str(self.project_dir)})
-        ctx = output.get("hookSpecificOutput", {}).get("additionalContext", "")
-        for role in ("research", "architect", "developer", "reviewer", "qa"):
-            self.assertIn(role, ctx, f"role '{role}' missing from session-start output")
-
-    def test_includes_active_task_info(self):
-        harness = self.project_dir / ".harness"
-        task_dir = harness / "tasks" / "05-19-feature"
-        task_dir.mkdir(parents=True)
-        (task_dir / "task.json").write_text(
-            json.dumps({"status": "in_progress", "title": "Build feature"}),
-            encoding="utf-8",
-        )
-        (harness / "runtime" / "sessions" / "sess-1.json").write_text(
-            json.dumps({"current_task": ".harness/tasks/05-19-feature"}),
-            encoding="utf-8",
-        )
-
-        output = _run_hook(
-            self.hook_path, {"cwd": str(self.project_dir), "session_id": "sess-1"}
-        )
-        ctx = output.get("hookSpecificOutput", {}).get("additionalContext", "")
-        self.assertIn("Build feature", ctx)
-        self.assertIn("in_progress", ctx)
-
-    def test_includes_unique_in_progress_task_without_session(self):
-        """SessionStart still shows the active task when Codex omits session_id."""
-        harness = self.project_dir / ".harness"
-        task_dir = harness / "tasks" / "05-19-codex-feature"
-        task_dir.mkdir(parents=True)
-        (task_dir / "task.json").write_text(
-            json.dumps({"status": "in_progress", "title": "Codex feature"}),
-            encoding="utf-8",
-        )
-
-        output = _run_hook(self.hook_path, {"cwd": str(self.project_dir)})
-        ctx = output.get("hookSpecificOutput", {}).get("additionalContext", "")
-        self.assertIn("Codex feature", ctx)
-        self.assertIn("in_progress", ctx)
+    def test_includes_active_task_phase_and_natural_language_commands(self):
+        self.write_task(phase="doc-plan")
+        output = _run_hook(self.hook_path, {"cwd": str(self.project_dir), "session_id": "sess-1"})
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("订单超时控制", ctx)
+        self.assertIn("doc-plan", ctx)
+        self.assertIn("Required skill: requirement-development", ctx)
+        self.assertIn("继续需求开发", ctx)
+        self.assertIn("查看当前需求开发状态", ctx)
 
     def test_exports_context_id_to_claude_env_file(self):
-        """SessionStart hook appends `export HARNESS_CONTEXT_ID=...` to CLAUDE_ENV_FILE.
-
-        Without this, task.py invocations from Bash tool can't resolve session
-        identity and fail with "No session identity".
-        """
         env_file = self.project_dir / "claude_env"
         env_file.write_text("", encoding="utf-8")
-
-        # Run hook with CLAUDE_ENV_FILE set in env
         result = subprocess.run(
             [sys.executable, str(self.hook_path)],
             input=json.dumps({"cwd": str(self.project_dir), "session_id": "sess-xyz"}),
@@ -197,252 +130,184 @@ class TestSessionStartHook(unittest.TestCase):
             env={**os.environ, "CLAUDE_ENV_FILE": str(env_file)},
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-
-        env_content = env_file.read_text(encoding="utf-8")
-        self.assertIn("HARNESS_CONTEXT_ID=", env_content)
-        # Should match the session_id (or derived from it)
-        self.assertIn("sess-xyz", env_content)
-        # Should be a valid shell export line
-        self.assertTrue(
-            "export HARNESS_CONTEXT_ID=" in env_content,
-            f"Missing export keyword: {env_content!r}",
-        )
+        self.assertIn("export HARNESS_CONTEXT_ID=", env_file.read_text(encoding="utf-8"))
 
 
-class TestInjectContextHookAllRoles(unittest.TestCase):
-    """v1.6: inject-context hook supports 3 roles (architect/developer/tester)."""
-
+class TestInjectContextHook(HookTestCase):
     def setUp(self):
-        self.project_dir = Path(tempfile.mkdtemp())
-        harness = self.project_dir / ".harness"
-        (harness / "runtime" / "sessions").mkdir(parents=True)
-
-        # Common task setup
-        task_dir = harness / "tasks" / "05-19-mvp"
-        task_dir.mkdir(parents=True)
-        (task_dir / "task.json").write_text(
-            json.dumps({"status": "in_progress", "title": "MVP task"}),
-            encoding="utf-8",
-        )
-        # v1.7: design doc lives at project root, NOT inside task dir.
-        (self.project_dir / "design.md").write_text(
-            "# Requirements\n\n- Feature A\n", encoding="utf-8"
-        )
-        (task_dir / "info.md").write_text("# Design\n\nUse PostgreSQL.\n", encoding="utf-8")
-
-        # Spec
-        spec_dir = harness / "spec"
-        spec_dir.mkdir(parents=True)
-        (spec_dir / "index.md").write_text("# Spec\nUse TypeScript.\n", encoding="utf-8")
-        (spec_dir / "testing.md").write_text("# Testing\nTable-driven tests.\n", encoding="utf-8")
-
-        # Research file
-        research_dir = task_dir / "research"
-        research_dir.mkdir(parents=True)
-        (research_dir / "framework-choice.md").write_text(
-            "# Framework\nGin chosen.\n", encoding="utf-8"
-        )
-
-        # Role-specific manifests
-        (task_dir / "context.architect.jsonl").write_text(
-            '{"file": ".harness/spec/index.md", "reason": "team conventions for design"}\n',
-            encoding="utf-8",
-        )
-        (task_dir / "context.developer.jsonl").write_text(
-            '{"file": ".harness/spec/index.md", "reason": "coding style"}\n',
-            encoding="utf-8",
-        )
-        (task_dir / "context.tester.jsonl").write_text(
-            '{"file": ".harness/spec/testing.md", "reason": "test conventions"}\n',
-            encoding="utf-8",
-        )
-
-        # Session pointer
-        (harness / "runtime" / "sessions" / "sess-1.json").write_text(
-            json.dumps({"current_task": ".harness/tasks/05-19-mvp"}),
-            encoding="utf-8",
-        )
-
+        super().setUp()
         self.hook_path = Path(__file__).parent.parent / "harness_hooks" / "harness-inject-context.py"
 
-    def tearDown(self):
-        shutil.rmtree(self.project_dir)
-
-    def _dispatch(self, role: str, prompt: str = "Do work") -> str:
-        """Dispatch a sub-agent via the hook, return the modified prompt."""
-        output = _run_hook(self.hook_path, {
-            "cwd": str(self.project_dir),
-            "session_id": "sess-1",
-            "tool_name": "Agent",
-            "tool_input": {"subagent_type": role, "prompt": prompt},
-        })
-        return output.get("hookSpecificOutput", {}).get("updatedInput", {}).get("prompt", "")
-
-    def test_architect_gets_prd_research_and_manifest(self):
-        """architect reads project-root design.md + research/*.md + context.architect.jsonl files."""
-        prompt = self._dispatch("architect", "Decide framework")
-        self.assertIn("Feature A", prompt, "design.md not injected")
-        # Manifest references spec/index.md whose content is "Use TypeScript"
-        self.assertIn("Use TypeScript", prompt, "Spec content not injected")
-        # Architect special: research/*.md is auto-included
-        self.assertIn("Gin chosen", prompt, "research file not auto-included for architect")
-
-    def test_developer_gets_prd_info_and_manifest(self):
-        """developer reads project-root design.md + info.md + context.developer.jsonl files."""
-        prompt = self._dispatch("developer", "Implement add endpoint")
-        self.assertIn("Feature A", prompt, "design.md not injected")
-        self.assertIn("Use PostgreSQL", prompt, "info.md not injected")
-        self.assertIn("Use TypeScript", prompt, "developer manifest not loaded")
-
-    def test_task_package_docs_override_project_root_design(self):
-        """task package proposal/design/tasks docs are injected before root design fallback."""
-        task_dir = self.project_dir / ".harness" / "tasks" / "05-19-mvp"
-        (task_dir / "proposal.md").write_text(
-            "# Proposal\n\nTask package proposal\n", encoding="utf-8"
-        )
-        (task_dir / "design.md").write_text(
-            "# Task Design\n\nTask package design\n", encoding="utf-8"
-        )
-        (task_dir / "tasks.md").write_text(
-            "# Tasks\n\nTask package task list\n", encoding="utf-8"
-        )
-
-        prompt = self._dispatch("developer", "Implement add endpoint")
-
-        self.assertIn("Task package proposal", prompt)
-        self.assertIn("Task package design", prompt)
-        self.assertIn("Task package task list", prompt)
-        self.assertNotIn("Feature A", prompt, "root design.md should be fallback only")
-
-    def test_project_root_design_is_fallback_when_task_package_docs_missing(self):
-        """project-root design.md is still injected for older task packages."""
-        prompt = self._dispatch("developer", "Implement add endpoint")
-
-        self.assertIn("Feature A", prompt, "root design.md fallback not injected")
-
-    def test_tester_gets_prd_info_and_manifest(self):
-        """tester reads project-root design.md + info.md + context.tester.jsonl files."""
-        prompt = self._dispatch("tester", "Write tests")
-        self.assertIn("Feature A", prompt)
-        self.assertIn("Use PostgreSQL", prompt)
-        self.assertIn("Table-driven tests", prompt, "tester manifest not loaded")
-
-    def test_old_role_names_rejected(self):
-        """v1.6: old role names (research/reviewer/qa) are no longer recognized."""
-        for old_role in ("research", "reviewer", "qa"):
-            output = _run_hook(self.hook_path, {
+    def dispatch(self, role: str, *, phase: str, prompt: str = "Do work") -> dict:
+        self.write_task(phase=phase)
+        return _run_hook(
+            self.hook_path,
+            {
                 "cwd": str(self.project_dir),
                 "session_id": "sess-1",
                 "tool_name": "Agent",
-                "tool_input": {"subagent_type": old_role, "prompt": "x"},
-            })
-            self.assertTrue(
-                output.get("_empty") or output.get("_returncode") == 0,
-                f"old role '{old_role}' should silently exit, got: {output}",
-            )
-
-    def test_each_role_gets_its_own_manifest_only(self):
-        """developer should NOT leak tester's testing manifest, tester should NOT leak developer's."""
-        dev_prompt = self._dispatch("developer", "Write code")
-        tester_prompt = self._dispatch("tester", "Write tests")
-
-        # developer manifest references spec/index.md → "Use TypeScript"
-        # tester manifest references spec/testing.md → "Table-driven tests"
-        self.assertIn("Use TypeScript", dev_prompt)
-        self.assertNotIn("Table-driven tests", dev_prompt,
-            "developer leaked tester manifest content")
-
-        self.assertIn("Table-driven tests", tester_prompt)
-
-    def test_ignores_unknown_role(self):
-        output = _run_hook(self.hook_path, {
-            "cwd": str(self.project_dir),
-            "tool_name": "Agent",
-            "tool_input": {"subagent_type": "unknown-role", "prompt": "x"},
-        })
-        self.assertTrue(
-            output.get("_empty") or output.get("_returncode") == 0,
-            f"Expected silent exit, got: {output}",
+                "tool_input": {"subagent_type": role, "prompt": prompt},
+            },
         )
 
-    def test_skips_seed_rows_in_jsonl(self):
-        """Seed rows (no file field) are skipped without error."""
-        task_dir = self.project_dir / ".harness" / "tasks" / "05-19-mvp"
-        (task_dir / "context.developer.jsonl").write_text(
-            '{"_example": "seed row"}\n'
-            '{"file": ".harness/spec/index.md", "reason": "guidelines"}\n',
-            encoding="utf-8",
-        )
+    def test_developer_green_gets_fixed_context(self):
+        output = self.dispatch("developer", phase="green", prompt="实现代码")
+        prompt = output["hookSpecificOutput"]["updatedInput"]["prompt"]
+        self.assertIn("开发意图已确认", prompt)
+        self.assertIn("使用 PostgreSQL", prompt)
+        self.assertIn("使用 Go 单元测试", prompt)
+        self.assertIn("x = 1", prompt)
+        self.assertIn("实现代码", prompt)
 
-        prompt = self._dispatch("developer", "Build it")
-        self.assertIn("Use TypeScript", prompt)
-        self.assertNotIn("_example", prompt)
+    def test_wrong_role_for_phase_is_blocked(self):
+        output = self.dispatch("developer", phase="red", prompt="实现代码")
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("当前阶段 red 不允许调用 developer", ctx)
+        self.assertNotIn("updatedInput", output["hookSpecificOutput"])
+
+    def test_unknown_agent_role_is_blocked_when_phase_requires_role(self):
+        self.write_task(phase="doc-plan")
+        output = _run_hook(
+            self.hook_path,
+            {
+                "cwd": str(self.project_dir),
+                "session_id": "sess-1",
+                "tool_name": "Task",
+                "tool_input": {"description": "直接写代码", "prompt": "生成代码框架"},
+            },
+        )
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("当前阶段 doc-plan 必须调用 architect", ctx)
+        self.assertNotIn("updatedInput", output["hookSpecificOutput"])
+
+    def test_no_active_task_blocks_development_subtask(self):
+        output = _run_hook(
+            self.hook_path,
+            {
+                "cwd": str(self.project_dir),
+                "tool_name": "Task",
+                "tool_input": {"description": "生成代码框架", "prompt": "读取参考文档后创建主要模块 stage"},
+            },
+        )
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("没有 active task", ctx)
+        self.assertIn("task.py create", ctx)
+
+    def test_no_active_task_blocks_task_create_style_development_tool(self):
+        output = _run_hook(
+            self.hook_path,
+            {
+                "cwd": str(self.project_dir),
+                "tool_name": "TaskCreate",
+                "tool_input": {"title": "生成代码框架", "prompt": "开始开发"},
+            },
+        )
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("没有 active task", ctx)
+        self.assertIn("禁止启动开发子任务", ctx)
+
+    def test_no_active_task_blocks_business_code_edit(self):
+        (self.project_dir / "src").mkdir(exist_ok=True)
+        output = _run_hook(
+            self.hook_path,
+            {
+                "cwd": str(self.project_dir),
+                "tool_name": "Write",
+                "tool_input": {"file_path": "src/order.py"},
+            },
+        )
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("没有 active task", ctx)
+
+    def test_doc_plan_blocks_business_code_edit(self):
+        self.write_task(phase="doc-plan")
+        output = _run_hook(
+            self.hook_path,
+            {
+                "cwd": str(self.project_dir),
+                "session_id": "sess-1",
+                "tool_name": "Edit",
+                "tool_input": {"file_path": "src/order.py"},
+            },
+        )
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("当前阶段 doc-plan 禁止修改业务代码", ctx)
+
+    def test_doc_plan_allows_plan_artifact_edit(self):
+        self.write_task(phase="doc-plan")
+        output = _run_hook(
+            self.hook_path,
+            {
+                "cwd": str(self.project_dir),
+                "session_id": "sess-1",
+                "tool_name": "Edit",
+                "tool_input": {"file_path": "docs/tasks/05-28-order/implementation-plan.md"},
+            },
+        )
+        self.assertEqual(output, {"_empty": True})
+
+    def test_green_blocks_test_edit(self):
+        self.write_task(phase="green")
+        output = _run_hook(
+            self.hook_path,
+            {
+                "cwd": str(self.project_dir),
+                "session_id": "sess-1",
+                "tool_name": "Edit",
+                "tool_input": {"file_path": "tests/test_order.py"},
+            },
+        )
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("当前阶段 green 禁止修改测试文件", ctx)
+
+    def test_green_blocks_scope_violation(self):
+        self.write_task(phase="green")
+        output = _run_hook(
+            self.hook_path,
+            {
+                "cwd": str(self.project_dir),
+                "session_id": "sess-1",
+                "tool_name": "Write",
+                "tool_input": {"file_path": "scripts/generate.py"},
+            },
+        )
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("不在 scope.json.allowed 范围内", ctx)
+
+    def test_architect_does_not_auto_read_research_directory(self):
+        task_dir = self.write_task(phase="doc-plan")
+        research = task_dir / "research"
+        research.mkdir()
+        (research / "secret.md").write_text("# Research\n不应自动注入。\n", encoding="utf-8")
+        output = _run_hook(
+            self.hook_path,
+            {
+                "cwd": str(self.project_dir),
+                "session_id": "sess-1",
+                "tool_name": "Agent",
+                "tool_input": {"subagent_type": "architect", "prompt": "规划"},
+            },
+        )
+        prompt = output["hookSpecificOutput"]["updatedInput"]["prompt"]
+        self.assertNotIn("不应自动注入", prompt)
 
     def test_codex_spawn_agent_infers_role_from_task_name(self):
-        """Codex spawn_agent has no subagent_type, so role is inferred from task_name."""
-        output = _run_hook(self.hook_path, {
-            "cwd": str(self.project_dir),
-            "session_id": "sess-1",
-            "tool_name": "spawn_agent",
-            "tool_input": {
-                "task_name": "harness_developer",
-                "agent_type": "worker",
-                "message": "GREEN phase. Build it.",
+        self.write_task(phase="green")
+        output = _run_hook(
+            self.hook_path,
+            {
+                "cwd": str(self.project_dir),
+                "session_id": "sess-1",
+                "tool_name": "spawn_agent",
+                "tool_input": {
+                    "task_name": "harness_developer",
+                    "agent_type": "worker",
+                    "message": "GREEN phase. Build it.",
+                },
             },
-        })
-
-        updated = output.get("hookSpecificOutput", {}).get("updatedInput", {})
-        message = updated.get("message", "")
-        self.assertIn("Use TypeScript", message)
-        self.assertIn("Feature A", message)
-        self.assertIn("Use PostgreSQL", message)
-        self.assertIn("GREEN phase. Build it.", message)
-
-    def test_codex_followup_task_infers_role_from_target(self):
-        """Codex followup_task receives the role name through target."""
-        output = _run_hook(self.hook_path, {
-            "cwd": str(self.project_dir),
-            "session_id": "sess-1",
-            "tool_name": "followup_task",
-            "tool_input": {
-                "target": "harness_tester",
-                "message": "VALIDATE phase. Add edge cases.",
-            },
-        })
-
-        updated = output.get("hookSpecificOutput", {}).get("updatedInput", {})
-        message = updated.get("message", "")
-        self.assertIn("Table-driven tests", message)
-        self.assertIn("Feature A", message)
-        self.assertIn("Use PostgreSQL", message)
-        self.assertIn("VALIDATE phase. Add edge cases.", message)
-
-    def test_codex_spawn_agent_uses_unique_in_progress_task_without_session(self):
-        """Codex spawn_agent gets context even when no session pointer exists."""
-        session_file = (
-            self.project_dir
-            / ".harness"
-            / "runtime"
-            / "sessions"
-            / "sess-1.json"
         )
-        session_file.unlink()
-
-        output = _run_hook(self.hook_path, {
-            "cwd": str(self.project_dir),
-            "tool_name": "spawn_agent",
-            "tool_input": {
-                "task_name": "harness_developer",
-                "agent_type": "worker",
-                "message": "GREEN phase. Build it.",
-            },
-        })
-
-        updated = output.get("hookSpecificOutput", {}).get("updatedInput", {})
-        message = updated.get("message", "")
-        self.assertIn("Use TypeScript", message)
-        self.assertIn("Feature A", message)
-        self.assertIn("Use PostgreSQL", message)
+        message = output["hookSpecificOutput"]["updatedInput"]["message"]
+        self.assertIn("使用 PostgreSQL", message)
         self.assertIn("GREEN phase. Build it.", message)
 
 

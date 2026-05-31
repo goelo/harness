@@ -3,26 +3,26 @@
 #
 # Default usage (install into current directory):
 #
-#   curl -fsSL https://raw.githubusercontent.com/goelo/harness/main/install-internal.sh | bash
+#   curl -fsSL https://git.xiaojukeji.com/morganli/harness/raw/master/install-internal.sh | bash
 #
 # Pass extra flags to init-harness.py (note the -s -- separator):
 #
-#   curl -fsSL https://raw.githubusercontent.com/goelo/harness/main/install-internal.sh \
+#   curl -fsSL https://git.xiaojukeji.com/morganli/harness/raw/master/install-internal.sh \
 #       | bash -s -- --no-rtk --no-caveman
 #
 # Override defaults via env vars:
 #
 #   HARNESS_BRANCH=develop  curl ... | bash
 #   HARNESS_TARGET=/path/to/proj  curl ... | bash
-#   HARNESS_REPO=https://github.com/your-org/harness.git  bash install-internal.sh
+#   HARNESS_REPO=git@your.git.host:x/harness.git  bash install-internal.sh
 
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
 # Config (env-overridable)
 # ---------------------------------------------------------------------------
-HARNESS_REPO="${HARNESS_REPO:-https://github.com/goelo/harness.git}"
-HARNESS_BRANCH="${HARNESS_BRANCH:-main}"
+HARNESS_REPO="${HARNESS_REPO:-git@git.xiaojukeji.com:comercial/harness.git}"
+HARNESS_BRANCH="${HARNESS_BRANCH:-master}"
 HARNESS_TARGET="${HARNESS_TARGET:-$PWD}"
 
 # ---------------------------------------------------------------------------
