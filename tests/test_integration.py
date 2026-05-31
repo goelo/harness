@@ -72,7 +72,7 @@ class TestFullHarnessLoop(unittest.TestCase):
         self.assertEqual(data["status"], "in_progress")
         self.assertEqual(data["phase"], "clarify")
 
-        # 3. Confirm requirement and enter plan.
+        # 3. Confirm requirement and enter doc-plan.
         result = self._run(
             str(self.project_dir / ".harness" / "scripts" / "task.py"),
             "clarify", "confirm",
@@ -83,8 +83,8 @@ class TestFullHarnessLoop(unittest.TestCase):
             "--source-hash", "sha256:integration",
         )
         self.assertEqual(result.returncode, 0, f"clarify failed: {result.stderr}")
-        result = self._run(str(self.project_dir / ".harness" / "scripts" / "task.py"), "advance", "plan")
-        self.assertEqual(result.returncode, 0, f"advance plan failed: {result.stderr}")
+        result = self._run(str(self.project_dir / ".harness" / "scripts" / "task.py"), "advance", "doc-plan")
+        self.assertEqual(result.returncode, 0, f"advance doc-plan failed: {result.stderr}")
 
         # 4. Write plan evidence and enter RED.
         (task_dir / "implementation-plan.md").write_text(

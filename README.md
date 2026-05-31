@@ -82,13 +82,13 @@ curl -fsSL https://git.xiaojukeji.com/morganli/harness/raw/master/install-intern
 `task.json.status` 表示任务大状态，`task.json.phase` 表示细阶段。阶段顺序固定：
 
 ```text
-clarify -> plan -> red -> green -> review -> validate -> done -> archived
+clarify -> doc-plan -> red -> green -> review -> validate -> done -> archived
 ```
 
 | 阶段 | 角色 | 必要产物 |
 | --- | --- | --- |
 | `clarify` | 主会话 | `clarification.jsonl`、`clarification.md` |
-| `plan` | `architect` | `implementation-plan.md`、`scope.json`、三份 `context.<role>.jsonl` |
+| `doc-plan` | `architect` | `implementation-plan.md`、`scope.json`、三份 `context.<role>.jsonl` |
 | `red` | `tester` | `test-result.red.json` |
 | `green` | `developer` | `test-result.green.json` |
 | `review` | `architect` | `review-result.json` |
@@ -119,7 +119,7 @@ clarify -> plan -> red -> green -> review -> validate -> done -> archived
 
 | 角色 | 阶段 | 职责 |
 | --- | --- | --- |
-| `architect` | `plan`、`review` | 编写实现计划、维护 `scope.json`、检查实现符合性 |
+| `architect` | `doc-plan`、`review` | 编写实现计划、维护 `scope.json`、检查实现符合性 |
 | `tester` | `red`、`validate` | 编写失败测试、补充边界测试、生成测试证据 |
 | `developer` | `green` | 根据 RED 测试完成最小实现 |
 

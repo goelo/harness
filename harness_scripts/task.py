@@ -21,7 +21,7 @@ from pathlib import Path
 
 LOCAL_CONTEXT_KEY = "local"
 TASKS_ROOT = Path("docs/tasks")
-PHASE_ORDER = ("clarify", "plan", "red", "green", "review", "validate", "done")
+PHASE_ORDER = ("clarify", "doc-plan", "red", "green", "review", "validate", "done")
 VALID_INTENTS = ("requirement-development", "requirement-confirmation")
 VALID_EXECUTION_MODES = ("agent-team", "single-session", "hybrid")
 PLAN_SECTIONS = (
@@ -462,19 +462,19 @@ def _validate_test_result(path: Path, expected_key: str) -> tuple[dict | None, s
     return data, None
 
 
-def _advance_plan(root: Path, task_dir: Path) -> int:
+def _advance_doc_plan(root: Path, task_dir: Path) -> int:
     confirmation = _latest_confirmation(task_dir)
     if not confirmation:
-        return _fail_advance(task_dir, "plan", "confirmed clarification is required")
+        return _fail_advance(task_dir, "doc-plan", "confirmed clarification is required")
     error = _validate_confirmation(confirmation)
     if error:
-        return _fail_advance(task_dir, "plan", error)
+        return _fail_advance(task_dir, "doc-plan", error)
     data = _read_task(task_dir)
     data["sourceDoc"] = confirmation["sourceDoc"]
     data["sourceDocHash"] = confirmation["sourceDocHash"]
     _write_task(task_dir, data)
-    _advance_to(task_dir, "plan", [_task_ref(task_dir / "clarification.jsonl", root)])
-    print("✓ Advanced to plan")
+    _advance_to(task_dir, "doc-plan", [_task_ref(task_dir / "clarification.jsonl", root)])
+    print("✓ Advanced to doc-plan")
     return 0
 
 
@@ -567,7 +567,7 @@ def cmd_advance(args: argparse.Namespace) -> int:
     task_dir = _resolve_task_dir(root, args.task)
     target = args.phase
     handlers = {
-        "plan": _advance_plan,
+        "doc-plan": _advance_doc_plan,
         "red": _advance_red,
         "green": _advance_green,
         "review": _advance_review,

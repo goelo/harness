@@ -109,8 +109,8 @@ class TestClarifyAndAdvance(TaskCliTestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.task = self.task_dir()
 
-    def test_advance_plan_requires_confirmed_clarification(self):
-        result = _run_task(self.project_dir, "advance", "plan")
+    def test_advance_doc_plan_requires_confirmed_clarification(self):
+        result = _run_task(self.project_dir, "advance", "doc-plan")
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("clarification", result.stderr)
@@ -118,7 +118,7 @@ class TestClarifyAndAdvance(TaskCliTestCase):
         self.assertEqual(data["phase"], "clarify")
         self.assertEqual(data["phaseHistory"][-1]["event"], "advance_failed")
 
-    def test_clarify_confirm_renders_markdown_and_allows_plan(self):
+    def test_clarify_confirm_renders_markdown_and_allows_doc_plan(self):
         result = _run_task(
             self.project_dir,
             "clarify",
@@ -138,15 +138,15 @@ class TestClarifyAndAdvance(TaskCliTestCase):
         self.assertTrue((self.task / "clarification.md").is_file())
         self.assertIn("增加订单超时控制能力", (self.task / "clarification.md").read_text(encoding="utf-8"))
 
-        advance = _run_task(self.project_dir, "advance", "plan")
+        advance = _run_task(self.project_dir, "advance", "doc-plan")
         self.assertEqual(advance.returncode, 0, advance.stderr)
         data = json.loads((self.task / "task.json").read_text(encoding="utf-8"))
-        self.assertEqual(data["phase"], "plan")
+        self.assertEqual(data["phase"], "doc-plan")
         self.assertEqual(data["sourceDocHash"], "sha256:test")
 
     def test_advance_red_checks_plan_scope_and_manifests(self):
         _confirm(self.project_dir)
-        self.assertEqual(_run_task(self.project_dir, "advance", "plan").returncode, 0)
+        self.assertEqual(_run_task(self.project_dir, "advance", "doc-plan").returncode, 0)
 
         missing = _run_task(self.project_dir, "advance", "red")
         self.assertNotEqual(missing.returncode, 0)

@@ -102,7 +102,9 @@ def build_context(task: dict | None) -> str:
             f"Active task: {task['title']} ({task['status']})\n"
             f"Phase: {task['phase']}\n"
             f"Execution mode: {task['executionMode']}\n"
-            f"Path: {task['path']}"
+            f"Path: {task['path']}\n"
+            "Required skill: requirement-development\n"
+            "继续当前任务时必须使用需求开发 skill 推进阶段，禁止退回原生直接开发流程。"
         )
     else:
         parts.append("No active task.")
@@ -118,7 +120,7 @@ def build_context(task: dict | None) -> str:
         "\nHarness roles:\n"
         "- requirement-confirmation: confirm intent, acceptance criteria, and boundaries\n"
         "- requirement-development: orchestrate phase progression\n"
-        "- architect: plan and review\n"
+        "- architect: doc-plan and review\n"
         "- tester: RED and validate\n"
         "- developer: GREEN implementation"
     )

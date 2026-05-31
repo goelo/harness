@@ -60,6 +60,12 @@ class HookTestCase(unittest.TestCase):
         (task_dir / "implementation-plan.md").write_text("# 实现计划\n\n使用 PostgreSQL。\n", encoding="utf-8")
         (self.project_dir / "src").mkdir(exist_ok=True)
         (self.project_dir / "src" / "order.py").write_text("x = 1\n", encoding="utf-8")
+        (self.project_dir / "tests").mkdir(exist_ok=True)
+        (self.project_dir / "tests" / "test_order.py").write_text("def test_order(): pass\n", encoding="utf-8")
+        (task_dir / "scope.json").write_text(
+            json.dumps({"allowed": ["src/**", "tests/**"], "denied": []}),
+            encoding="utf-8",
+        )
         for role in ("architect", "developer", "tester"):
             (task_dir / f"context.{role}.jsonl").write_text(
                 '{"file":"src/order.py","reason":"相关实现"}\n',
@@ -95,6 +101,7 @@ class TestWorkflowStateHook(HookTestCase):
         ctx = output["hookSpecificOutput"]["additionalContext"]
         self.assertIn("Phase: green", ctx)
         self.assertIn("编码实现阶段", ctx)
+        self.assertIn("Required skill: requirement-development", ctx)
 
 
 class TestSessionStartHook(HookTestCase):
@@ -103,11 +110,12 @@ class TestSessionStartHook(HookTestCase):
         self.hook_path = Path(__file__).parent.parent / "harness_hooks" / "harness-session-start.py"
 
     def test_includes_active_task_phase_and_natural_language_commands(self):
-        self.write_task(phase="plan")
+        self.write_task(phase="doc-plan")
         output = _run_hook(self.hook_path, {"cwd": str(self.project_dir), "session_id": "sess-1"})
         ctx = output["hookSpecificOutput"]["additionalContext"]
         self.assertIn("订单超时控制", ctx)
-        self.assertIn("plan", ctx)
+        self.assertIn("doc-plan", ctx)
+        self.assertIn("Required skill: requirement-development", ctx)
         self.assertIn("继续需求开发", ctx)
         self.assertIn("查看当前需求开发状态", ctx)
 
@@ -157,8 +165,117 @@ class TestInjectContextHook(HookTestCase):
         self.assertIn("当前阶段 red 不允许调用 developer", ctx)
         self.assertNotIn("updatedInput", output["hookSpecificOutput"])
 
+    def test_unknown_agent_role_is_blocked_when_phase_requires_role(self):
+        self.write_task(phase="doc-plan")
+        output = _run_hook(
+            self.hook_path,
+            {
+                "cwd": str(self.project_dir),
+                "session_id": "sess-1",
+                "tool_name": "Task",
+                "tool_input": {"description": "直接写代码", "prompt": "生成代码框架"},
+            },
+        )
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("当前阶段 doc-plan 必须调用 architect", ctx)
+        self.assertNotIn("updatedInput", output["hookSpecificOutput"])
+
+    def test_no_active_task_blocks_development_subtask(self):
+        output = _run_hook(
+            self.hook_path,
+            {
+                "cwd": str(self.project_dir),
+                "tool_name": "Task",
+                "tool_input": {"description": "生成代码框架", "prompt": "读取参考文档后创建主要模块 stage"},
+            },
+        )
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("没有 active task", ctx)
+        self.assertIn("task.py create", ctx)
+
+    def test_no_active_task_blocks_task_create_style_development_tool(self):
+        output = _run_hook(
+            self.hook_path,
+            {
+                "cwd": str(self.project_dir),
+                "tool_name": "TaskCreate",
+                "tool_input": {"title": "生成代码框架", "prompt": "开始开发"},
+            },
+        )
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("没有 active task", ctx)
+        self.assertIn("禁止启动开发子任务", ctx)
+
+    def test_no_active_task_blocks_business_code_edit(self):
+        (self.project_dir / "src").mkdir(exist_ok=True)
+        output = _run_hook(
+            self.hook_path,
+            {
+                "cwd": str(self.project_dir),
+                "tool_name": "Write",
+                "tool_input": {"file_path": "src/order.py"},
+            },
+        )
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("没有 active task", ctx)
+
+    def test_doc_plan_blocks_business_code_edit(self):
+        self.write_task(phase="doc-plan")
+        output = _run_hook(
+            self.hook_path,
+            {
+                "cwd": str(self.project_dir),
+                "session_id": "sess-1",
+                "tool_name": "Edit",
+                "tool_input": {"file_path": "src/order.py"},
+            },
+        )
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("当前阶段 doc-plan 禁止修改业务代码", ctx)
+
+    def test_doc_plan_allows_plan_artifact_edit(self):
+        self.write_task(phase="doc-plan")
+        output = _run_hook(
+            self.hook_path,
+            {
+                "cwd": str(self.project_dir),
+                "session_id": "sess-1",
+                "tool_name": "Edit",
+                "tool_input": {"file_path": "docs/tasks/05-28-order/implementation-plan.md"},
+            },
+        )
+        self.assertEqual(output, {"_empty": True})
+
+    def test_green_blocks_test_edit(self):
+        self.write_task(phase="green")
+        output = _run_hook(
+            self.hook_path,
+            {
+                "cwd": str(self.project_dir),
+                "session_id": "sess-1",
+                "tool_name": "Edit",
+                "tool_input": {"file_path": "tests/test_order.py"},
+            },
+        )
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("当前阶段 green 禁止修改测试文件", ctx)
+
+    def test_green_blocks_scope_violation(self):
+        self.write_task(phase="green")
+        output = _run_hook(
+            self.hook_path,
+            {
+                "cwd": str(self.project_dir),
+                "session_id": "sess-1",
+                "tool_name": "Write",
+                "tool_input": {"file_path": "scripts/generate.py"},
+            },
+        )
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("不在 scope.json.allowed 范围内", ctx)
+
     def test_architect_does_not_auto_read_research_directory(self):
-        task_dir = self.write_task(phase="plan")
+        task_dir = self.write_task(phase="doc-plan")
         research = task_dir / "research"
         research.mkdir()
         (research / "secret.md").write_text("# Research\n不应自动注入。\n", encoding="utf-8")

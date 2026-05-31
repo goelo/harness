@@ -6,17 +6,41 @@ from __future__ import annotations
 import json
 import os
 import sys
+import fnmatch
 from pathlib import Path
 
 LOCAL_CONTEXT_KEY = "local"
 KNOWN_ROLES = ("architect", "developer", "tester")
 PHASE_ROLE = {
-    "plan": "architect",
+    "doc-plan": "architect",
     "red": "tester",
     "green": "developer",
     "review": "architect",
     "validate": "tester",
 }
+ROLE_TOOLS = ("Task", "Agent", "TaskCreate", "TeamCreate", "spawn_agent", "followup_task")
+EDIT_TOOLS = ("Write", "Edit", "MultiEdit")
+TEST_PATH_PARTS = ("/test/", "/tests/", "_test.", ".test.", ".spec.")
+CODE_EXTENSIONS = (
+    ".go",
+    ".py",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".java",
+    ".kt",
+    ".rs",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".cs",
+    ".php",
+    ".rb",
+    ".swift",
+)
 CONTROLLED_SUFFIXES = (
     "task.json",
     "clarification.jsonl",
@@ -25,6 +49,13 @@ CONTROLLED_SUFFIXES = (
     "test-result.green.json",
     "review-result.json",
     "verify-result.json",
+)
+DOC_PLAN_TASK_FILES = (
+    "implementation-plan.md",
+    "scope.json",
+    "context.architect.jsonl",
+    "context.developer.jsonl",
+    "context.tester.jsonl",
 )
 
 
@@ -165,17 +196,113 @@ def prompt_field(tool_input: dict) -> str:
     return "prompt"
 
 
-def controlled_edit_target(tool_input: dict) -> str | None:
-    candidates = []
+def normalize_target_path(root: Path, value: str) -> str:
+    path = Path(value)
+    if path.is_absolute():
+        try:
+            return path.resolve().relative_to(root).as_posix()
+        except ValueError:
+            return path.as_posix()
+    return path.as_posix()
+
+
+def edit_target(tool_input: dict) -> str | None:
     for key in ("file_path", "path", "target_file"):
         value = tool_input.get(key)
-        if isinstance(value, str):
-            candidates.append(value)
-    for value in candidates:
-        normalized = value.replace("\\", "/")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def controlled_edit_target(tool_input: dict) -> str | None:
+    target = edit_target(tool_input)
+    if target:
+        normalized = target.replace("\\", "/")
         if "/docs/tasks/" in normalized or normalized.startswith("docs/tasks/"):
             if any(normalized.endswith(suffix) for suffix in CONTROLLED_SUFFIXES):
-                return value
+                return target
+    return None
+
+
+def is_test_path(path: str) -> bool:
+    normalized_path = path.replace("\\", "/")
+    normalized = f"/{normalized_path}"
+    return any(part in normalized for part in TEST_PATH_PARTS)
+
+
+def is_code_path(path: str) -> bool:
+    return Path(path).suffix in CODE_EXTENSIONS
+
+
+def matches_pattern(path: str, pattern: str) -> bool:
+    normalized = pattern.strip()
+    if normalized.endswith("/"):
+        normalized = f"{normalized}**"
+    plain = normalized.rstrip("/")
+    if not any(ch in normalized for ch in "*?[]"):
+        return path == plain or path.startswith(f"{plain}/")
+    return fnmatch.fnmatchcase(path, normalized)
+
+
+def matches_any(path: str, patterns: list[str]) -> bool:
+    return any(matches_pattern(path, pattern) for pattern in patterns)
+
+
+def scope_allowed(task_dir: Path) -> list[str]:
+    path = task_dir / "scope.json"
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    allowed = data.get("allowed")
+    if not isinstance(allowed, list):
+        return []
+    return [item for item in allowed if isinstance(item, str) and item.strip()]
+
+
+def is_doc_plan_artifact(path: str, task_dir: Path, root: Path) -> bool:
+    try:
+        rel_task = task_dir.relative_to(root).as_posix()
+    except ValueError:
+        return False
+    if not path.startswith(f"{rel_task}/"):
+        return False
+    name = path.removeprefix(f"{rel_task}/")
+    return name in DOC_PLAN_TASK_FILES
+
+
+def phase_edit_violation(root: Path, task_dir: Path | None, phase: str | None, target: str) -> str | None:
+    rel = normalize_target_path(root, target)
+    if task_dir is None:
+        if is_code_path(rel):
+            return f"没有 active task，禁止修改业务代码 {rel}。请先进入 requirement-development 并创建 task。"
+        return None
+    if phase == "clarify":
+        if is_code_path(rel):
+            return f"当前阶段 clarify 禁止修改业务代码 {rel}。请先完成需求确认并推进到 doc-plan。"
+        return None
+    if phase == "doc-plan":
+        if is_doc_plan_artifact(rel, task_dir, root):
+            return None
+        if is_code_path(rel) or is_test_path(rel):
+            return f"当前阶段 doc-plan 禁止修改业务代码 {rel}。只能编写 implementation-plan.md、scope.json 和 context.*.jsonl。"
+        return None
+    if phase in ("red", "validate"):
+        if is_code_path(rel) and not is_test_path(rel):
+            return f"当前阶段 {phase} 禁止修改业务实现文件 {rel}。该阶段只允许测试相关变更。"
+        return None
+    if phase == "green":
+        if is_test_path(rel):
+            return f"当前阶段 green 禁止修改测试文件 {rel}。请回到 red 或 validate 阶段处理测试。"
+        allowed = scope_allowed(task_dir)
+        if allowed and not matches_any(rel, allowed):
+            return f"文件 {rel} 不在 scope.json.allowed 范围内，禁止修改。"
+    if phase == "review":
+        allowed = scope_allowed(task_dir)
+        if allowed and not matches_any(rel, allowed):
+            return f"文件 {rel} 不在 scope.json.allowed 范围内，禁止修改。"
     return None
 
 
@@ -198,22 +325,41 @@ def main() -> int:
         return 0
 
     tool_input = data.get("tool_input", {})
+    tool_name = data.get("tool_name", "")
     target = controlled_edit_target(tool_input)
     if target:
         return emit_block(f"受控文件 {target} 只能通过 harness 内部工具生成，禁止手工编辑。")
-
-    role = infer_role(tool_input)
-    if role not in KNOWN_ROLES:
-        return 0
 
     root = find_project_root(Path(data.get("cwd") or "."))
     if root is None:
         return 0
     task_dir = get_active_task_dir(root, data)
+    phase = task_phase(task_dir) if task_dir else None
+
+    if tool_name in EDIT_TOOLS:
+        target = edit_target(tool_input)
+        if target:
+            violation = phase_edit_violation(root, task_dir, phase, target)
+            if violation:
+                return emit_block(violation)
+        return 0
+
+    if tool_name in ROLE_TOOLS and task_dir is None:
+        return emit_block(
+            "没有 active task，禁止启动开发子任务。请先通过 requirement-development 创建 task，"
+            "并使用 python3 .harness/scripts/task.py create \"<任务名>\" 进入 clarify 阶段。"
+        )
+
+    role = infer_role(tool_input)
+    if role not in KNOWN_ROLES:
+        if tool_name in ROLE_TOOLS and phase in PHASE_ROLE:
+            expected = PHASE_ROLE[phase]
+            return emit_block(f"当前阶段 {phase} 必须调用 {expected}，禁止使用未声明角色的子任务绕过 harness。")
+        return 0
+
     if task_dir is None:
         return 0
 
-    phase = task_phase(task_dir)
     expected = PHASE_ROLE.get(phase)
     if expected != role:
         return emit_block(f"当前阶段 {phase} 不允许调用 {role}。应执行的角色职责是 {expected or '无开发角色'}。")

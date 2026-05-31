@@ -104,7 +104,12 @@ def unique_in_progress_task(root: Path) -> dict | None:
 
 def build_breadcrumb(task: dict | None, body: str) -> str:
     if task:
-        header = f"Task: {task['path']} ({task['status']})\nPhase: {task['phase']}"
+        header = (
+            f"Task: {task['path']} ({task['status']})\n"
+            f"Phase: {task['phase']}\n"
+            "Required skill: requirement-development\n"
+            "继续当前任务时必须使用需求开发 skill 推进阶段，禁止退回原生直接开发流程。"
+        )
     else:
         header = "Status: no_task\nPhase: no_task"
     return f"<workflow-state>\n{header}\n{body}\n</workflow-state>"

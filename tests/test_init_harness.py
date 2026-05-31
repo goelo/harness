@@ -196,13 +196,16 @@ class TestInitHarnessHooksAndInstructions(InitHarnessTestCase):
         codex_hooks = json.loads((self.project_dir / ".codex" / "hooks.json").read_text(encoding="utf-8"))
         self.assertIn("PreToolUse", settings["hooks"])
         self.assertIn("PreToolUse", codex_hooks["hooks"])
+        claude_pre_tool = json.dumps(settings["hooks"]["PreToolUse"], ensure_ascii=False)
+        for matcher in ("Task", "Agent", "Write", "Edit", "MultiEdit", "Bash"):
+            self.assertIn(matcher, claude_pre_tool)
 
         for name in ("CLAUDE.md", "AGENTS.md"):
             content = (self.project_dir / name).read_text(encoding="utf-8")
             self.assertIn("# Agent Harness", content)
             self.assertIn("docs/tasks/", content)
             self.assertIn("requirement-confirmation", content)
-            self.assertIn("clarify -> plan -> red -> green -> review -> validate -> done -> archived", content)
+            self.assertIn("clarify -> doc-plan -> red -> green -> review -> validate -> done -> archived", content)
 
     def test_instruction_append_is_idempotent(self):
         (self.project_dir / "AGENTS.md").write_text("# Existing\n\n规则。\n", encoding="utf-8")
