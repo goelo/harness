@@ -21,7 +21,7 @@ RTK_INSTALL_URL = (
     "https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh"
 )
 CAVEMAN_INSTALL_URL = (
-    "https://git.xiaojukeji.com/morganli/caveman/raw/main/install-internal.sh"
+    "https://raw.githubusercontent.com/goelo/caveman/main/install-internal.sh"
 )
 
 HARNESS_HOOKS = {
@@ -2871,9 +2871,9 @@ def report_caveman_status(status: str) -> None:
         "install_failed":    "Caveman install attempted but verification failed; install manually:\n"
                              f"    curl -fsSL {CAVEMAN_INSTALL_URL} | bash caveman",
         "needs_curl":        "Caveman not installed and curl not found.\n"
-                             "    Install curl first, or visit https://git.xiaojukeji.com/morganli/caveman",
+                             "    Install curl first, or visit https://github.com/goelo/caveman",
         "needs_bash":        "Caveman not installed and bash not found.\n"
-                             "    Install bash, or follow https://git.xiaojukeji.com/morganli/caveman manually",
+                             "    Install bash, or follow https://github.com/goelo/caveman manually",
     }
     print(f"  caveman: {messages.get(status, status)}")
 
