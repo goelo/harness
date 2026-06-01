@@ -53,10 +53,10 @@ Harness
 │   ├── validate
 │   └── done
 ├── 项目知识
-│   ├── docs/dev-guide.md
-│   ├── docs/api-url-index.md
-│   ├── docs/api-detail.md
-│   └── docs/standards/
+│   ├── docs/standards/project-guide.md
+│   ├── docs/standards/api/url-index.md
+│   ├── docs/standards/api/detail.md
+│   └── .harness/project-profile.json
 ├── 质量证据
 │   ├── clarification.jsonl
 │   ├── implementation-plan.md
@@ -101,15 +101,290 @@ Harness
 | `.harness/install-state.json` | 记录 Harness 版本、安装时间、安装来源、写入文件、启用能力 | JSON |
 | 安装诊断命令 | 检查 `.harness/scripts`、hooks、skills、agents、`verify.json` 是否完整 | 控制台报告 |
 | 升级保护 | 安装时保留本地配置和运行时状态，避免覆盖团队自定义内容 | 安装日志 |
+| 安装进度事件 | 安装器输出 CLI 进度条，并写入 `.harness/runtime/install-progress.json` | 进度 JSON |
+| 项目扫描 Skill | 默认安装 `project-doc-scanner`，引导用户在 AI 会话中扫描当前项目 | Skill |
 
 ### P1：项目画像
 
 | 功能 | 说明 | 产物 |
 | --- | --- | --- |
-| 项目开发指南生成 | 扫描代码、README、架构文档，生成项目分层、命名、错误处理、日志、测试规则 | `docs/dev-guide.md` |
-| 接口索引生成 | 扫描路由、controller、handler、proto，生成接口清单 | `docs/api-url-index.md` |
-| 接口详情生成 | 提取出入参、认证、状态码、示例和敏感字段 | `docs/api-detail.md` |
+| 项目开发指南生成 | 扫描代码、README、架构文档，生成项目分层、命名、错误处理、日志、测试规则 | `docs/standards/project-guide.md` |
+| 接口索引生成 | 扫描路由、controller、handler、proto，生成接口清单 | `docs/standards/api/url-index.md` |
+| 接口详情生成 | 提取出入参、认证、状态码、示例和敏感字段 | `docs/standards/api/detail.md` |
+| 项目画像生成 | 结构化保存技术栈、入口文件、关键目录、接口统计、验证命令和审阅状态 | `.harness/project-profile.json` |
 | 验证命令识别 | 根据项目技术栈推荐 `lint`、`type`、`test`、`coverage` 命令 | `.harness/verify.json` 建议项 |
+
+## 项目文档初始化能力
+
+项目文档初始化是项目级前置能力，不并入单次需求开发阶段。安装命令只负责检查当前项目是否已有项目知识文档，并提示用户在 Codex 或 Claude Code 中执行项目扫描。真正的代码扫描、模板选择、子代理调度、文档生成和审阅状态写入由默认安装的 `project-doc-scanner` Skill 完成。
+
+### 默认 Skill 入口
+
+`project-doc-scanner` 是项目知识初始化的默认入口，随 Harness 安装进入目标项目。
+
+| 项目 | 设计 |
+| --- | --- |
+| Skill 名称 | `project-doc-scanner` |
+| 安装位置 | `.claude/skills/project-doc-scanner/SKILL.md`，后续补齐 Codex 侧等效入口 |
+| 触发语 | 扫描当前项目、初始化项目文档、生成项目开发文档、生成接口文档、刷新项目知识文档 |
+| 配套脚本 | `.harness/scripts/project.py`，负责配置、状态、哈希、审阅记录和索引更新 |
+
+Skill 固定采用“先检测，再确认，再扫描”的交互流程：
+
+| 步骤 | 行为 |
+| --- | --- |
+| 检测项目状态 | 检查 `.harness/`、`.harness/project-docs.json`、`.harness/project-profile.json` 和 `docs/standards/` 下的项目知识文档 |
+| 判断扫描类型 | 文档缺失时首次扫描，文档存在时增量扫描，`stale` 或 `needs_update` 时刷新扫描 |
+| 确认模板来源 | 已有 `.harness/project-docs.json` 时展示配置摘要；无配置时询问使用内置模板还是自定义模板 |
+| 确认写入范围 | 展示将写入、覆盖、生成候选稿、保存缓存和审阅记录的文件 |
+| 开始扫描 | 调度架构、接口、质量、规范子代理，汇总结果并生成文档 |
+
+### 产物结构
+
+| 产物 | 路径 | 生命周期 | 是否纳入版本管理 |
+| --- | --- | --- | --- |
+| 项目开发指南 | `docs/standards/project-guide.md` | 长期保留 | 是 |
+| 接口索引 | `docs/standards/api/url-index.md` | 长期保留 | 是 |
+| 接口详情 | `docs/standards/api/detail.md` | 长期保留 | 是 |
+| 项目画像 | `.harness/project-profile.json` | 长期保留 | 是 |
+| 项目文档配置 | `.harness/project-docs.json` | 长期保留 | 是 |
+| 子代理扫描缓存 | `.harness/analysis/latest/*.json` | 可再生成 | 默认否 |
+| 项目级审阅记录 | `.harness/project-docs/reviews/*.json` | 长期保留 | 是 |
+| 扫描摘要 | `.harness/project-docs/reviews/<timestamp>-scan-summary.md` | 长期保留 | 是 |
+| 待审阅清单 | `docs/standards/project-docs-review.md` | 长期保留 | 是 |
+| 候选更新稿 | `.harness/project-docs/proposals/*.proposed.md` | 临时到半长期 | 默认否 |
+| 覆盖前备份 | `.harness/project-docs/backups/<timestamp>/` | 长期保留 | 是 |
+
+`docs/tasks/` 继续只保存单次需求开发任务包。初始化文档属于长期项目知识，统一放在 `docs/standards/` 下，便于后续 `architect`、`developer`、`tester` 阶段读取。
+
+### 文档证据结构
+
+初始化文档的关键判断必须采用“判断 + 证据 + 置信度 + 待确认项”的结构，避免 AI 将推测内容写成项目事实。
+
+| 字段 | 含义 |
+| --- | --- |
+| 判断 | AI 对项目架构、接口、测试方式、工程规范的理解 |
+| 证据 | 对应的文件路径、行号、函数名、配置项或命令输出摘要 |
+| 置信度 | `high`、`medium`、`low` |
+| 待确认项 | 代码证据不足，需要负责人确认的内容 |
+
+### 子代理扫描机制
+
+初始化过程由 `project-doc-scanner` Skill 的主会话调度子代理扫描，主会话只负责汇总结果和生成最终文档，避免大范围源码内容污染主会话窗口。
+
+| 子代理 | 扫描内容 | 输出 |
+| --- | --- | --- |
+| 架构扫描子代理 | 入口文件、目录结构、模块分层、依赖方向、架构规则 | `.harness/analysis/latest/architecture-scan.json` |
+| 接口扫描子代理 | 路由、controller、handler、proto、OpenAPI 文件、接口出入参 | `.harness/analysis/latest/api-scan.json` |
+| 质量扫描子代理 | 测试框架、lint、type、coverage、CI 配置 | `.harness/analysis/latest/quality-scan.json` |
+| 规范扫描子代理 | README、CONTRIBUTING、docs、已有团队规范 | `.harness/analysis/latest/standards-scan.json` |
+
+子代理输出结构化事实，主会话只基于这些事实生成最终文档。中间结果保存路径、行号和短摘要，不保存大段源码。
+
+子代理扫描结果默认只保留 `.harness/analysis/latest/*.json`。如果 `.harness/project-docs.json` 中配置 `keepHistory=true`，则同时写入 `.harness/analysis/history/<timestamp>/*.json`。
+
+### 扫描成本控制
+
+扫描分为三层执行。
+
+| 层级 | 行为 | 输出 |
+| --- | --- | --- |
+| 索引优先 | 读取文件树、依赖清单、配置文件、路由注册入口 | 候选模块、候选接口、候选测试命令 |
+| 抽样验证 | 每类目录抽取代表文件，验证架构和规范判断 | 带证据的 findings |
+| 按需深入 | 对低置信度、冲突项、关键接口读取更多文件 | 待确认项和补充证据 |
+
+预算配置由 `.harness/project-docs.json` 控制，例如 `maxFiles`、`maxFindings`、`maxEvidencePerFinding`、`maxEndpoints`。
+
+### 局部扫描
+
+`project-doc-scanner` 支持局部扫描，避免接口文档、小范围规范变化时重复扫描整个项目。
+
+| 意图 | 扫描范围 | 影响文件 |
+| --- | --- | --- |
+| 只更新接口文档 | `api` scanner | `docs/standards/api/url-index.md`、`docs/standards/api/detail.md` |
+| 只刷新项目开发指南 | `architecture`、`quality`、`standards` scanner | `docs/standards/project-guide.md` |
+| 重新识别测试命令 | `quality` scanner | `.harness/project-profile.json`、`docs/standards/project-guide.md` 中的验证章节 |
+| 完整扫描当前项目 | 全部 scanner | 全部项目知识文档 |
+
+底层脚本预留参数：
+
+```bash
+python3 .harness/scripts/project.py docs refresh --only api
+python3 .harness/scripts/project.py docs refresh --only project-guide
+python3 .harness/scripts/project.py docs refresh --only quality
+python3 .harness/scripts/project.py docs refresh --all
+```
+
+### 配置方式
+
+配置采用“内置 preset + 项目覆盖配置”。Harness 内置常见技术栈 preset，项目中只保存 `.harness/project-docs.json` 覆盖项。
+
+```json
+{
+  "version": 1,
+  "preset": "go-service",
+  "documents": {
+    "projectGuide": {
+      "enabled": true,
+      "output": "docs/standards/project-guide.md",
+      "template": "default"
+    },
+    "apiUrlIndex": {
+      "enabled": true,
+      "output": "docs/standards/api/url-index.md",
+      "template": "default"
+    },
+    "apiDetail": {
+      "enabled": true,
+      "output": "docs/standards/api/detail.md",
+      "template": "default"
+    }
+  },
+  "review": {
+    "initialStatus": "draft",
+    "requiredBeforeUseAsStandard": true,
+    "contextInjection": {
+      "approved": "standard",
+      "draft": "reference",
+      "needs_update": "limited",
+      "stale": "disabled"
+    }
+  },
+  "analysis": {
+    "cacheDir": ".harness/analysis/latest",
+    "keepHistory": false,
+    "historyDir": ".harness/analysis/history"
+  }
+}
+```
+
+建议内置 preset 包括 `default`、`go-service`、`java-spring`、`node-service`、`python-service`。
+
+### 审阅状态
+
+负责人审阅结果进入 `.harness/project-profile.json`，后续需求开发根据文档状态决定注入强度。
+
+| 状态 | 含义 | 后续 AI 使用规则 |
+| --- | --- | --- |
+| `draft` | AI 刚生成，负责人尚未审阅 | 可作为参考，关键判断必须重新核对证据 |
+| `approved` | 负责人已经审阅通过 | 可作为项目长期规范注入 |
+| `needs_update` | 负责人发现内容不准确 | 只注入摘要和待确认项 |
+| `stale` | 代码变化较大，文档可能过期 | 默认不注入正文，只提示需要刷新 |
+
+支持逐文档批准和一键全部批准。
+
+```bash
+python3 .harness/scripts/project.py docs approve project-guide
+python3 .harness/scripts/project.py docs approve api-url-index
+python3 .harness/scripts/project.py docs approve api-detail
+python3 .harness/scripts/project.py docs approve --all
+```
+
+首版只同步文档状态、内容哈希、路径和更新时间。后续在模板稳定后，再支持从 Markdown 反写结构化字段。
+
+`approved` 文档默认不允许直接覆盖。扫描发现需要更新已批准文档时，先生成候选稿：
+
+```text
+.harness/project-docs/proposals/
+├── project-guide.proposed.md
+├── api-url-index.proposed.md
+└── api-detail.proposed.md
+```
+
+只有用户明确同意覆盖后，才允许把候选稿写回正式文档。覆盖前必须自动备份旧版本：
+
+```text
+.harness/project-docs/backups/
+└── 2026-06-01T10-00-00/
+    ├── project-guide.md
+    ├── api-url-index.md
+    ├── api-detail.md
+    └── backup-manifest.json
+```
+
+### 生成模式
+
+| 模式 | 使用场景 | 行为 |
+| --- | --- | --- |
+| 全量生成 | 新项目首次接入 Harness | 扫描代码，生成全部项目知识文档和项目画像 |
+| 增量刷新 | 代码结构、接口、测试命令发生变化 | 只刷新受影响部分，并保留负责人已批准内容 |
+| 强制重建 | 文档明显过期或项目结构大改 | 重新生成全部文档，旧文档覆盖前备份 |
+
+建议命令：
+
+```bash
+python3 .harness/scripts/project.py docs init
+python3 .harness/scripts/project.py docs refresh
+python3 .harness/scripts/project.py docs rebuild
+python3 .harness/scripts/project.py docs status
+```
+
+### 安装前置提示
+
+安装流程增加项目文档检查。安装完成 `.harness/`、hooks、skills、agents、`docs/tasks/`、`docs/standards/` 和 `project-doc-scanner` Skill 后，检查项目知识文档是否存在，并提示用户在 AI 会话中执行项目扫描。
+
+| 场景 | 行为 |
+| --- | --- |
+| 交互式安装 | 检测缺失后提示用户在 Codex 或 Claude Code 中输入“扫描当前项目” |
+| 非交互安装 | 不询问，只记录项目文档待初始化状态 |
+| `--init-project-docs` | 不做深度扫描，只生成配置骨架并提示进入 AI 会话扫描 |
+| `--no-init-project-docs` | 跳过项目文档提示，并记录原因 |
+
+安装命令不直接依赖 AI 子代理，因此安装成功和项目文档扫描成功天然分离。项目文档扫描失败时，由 `project-doc-scanner` Skill 和 `.harness/scripts/project.py` 写入 `.harness/project-profile.json` 与审阅记录。
+
+安装完成提示示例：
+
+```text
+Harness 安装完成。
+
+当前项目尚未生成 AI 自动化开发文档。
+建议在 Codex 或 Claude Code 中输入：
+
+扫描当前项目
+
+该操作会触发 project-doc-scanner Skill，生成 docs/standards/ 下的项目知识文档。
+```
+
+### 安装进度
+
+首版暂缓 HTML 安装页面，先提供 CLI 进度条和 `.harness/runtime/install-progress.json`。进度只覆盖安装本体、配置写入和项目文档状态检查，不覆盖 AI 会话中的深度扫描。后续再基于同一份进度事件接入本地页面或企业平台页面。
+
+| 阶段 | 参考进度 | 文案 |
+| --- | ---: | --- |
+| `prepare` | 5% | 正在准备安装环境 |
+| `install_files` | 15% | 正在写入 Harness 文件 |
+| `configure_hooks` | 25% | 正在配置 Claude Code 和 Codex hooks |
+| `install_skills` | 35% | 正在安装 Harness Skills |
+| `docs_preflight` | 55% | 正在检查项目文档状态 |
+| `write_project_docs_config` | 70% | 正在写入项目文档配置骨架 |
+| `write_install_state` | 90% | 正在写入安装状态 |
+| `done` | 100% | 安装完成 |
+
+### 扫描摘要与审阅入口
+
+`project-doc-scanner` 每次扫描完成后生成面向负责人的扫描摘要：
+
+```text
+.harness/project-docs/reviews/<timestamp>-scan-summary.md
+```
+
+摘要包含本次扫描类型、使用模板、子代理结果、生成文件、候选稿、待确认项和建议审阅顺序。
+
+同时生成集中待审阅清单：
+
+```text
+docs/standards/project-docs-review.md
+```
+
+建议审阅顺序：
+
+| 顺序 | 文档 | 审阅重点 |
+| ---: | --- | --- |
+| 1 | `docs/standards/project-docs-review.md` | 待确认项和高优先级问题 |
+| 2 | `docs/standards/project-guide.md` | 架构、目录职责、开发规范、验证命令 |
+| 3 | `docs/standards/api/url-index.md` | 接口是否遗漏、分组是否合理 |
+| 4 | `docs/standards/api/detail.md` | 关键接口的出入参、认证、状态码 |
+| 5 | `.harness/project-profile.json` | 自动化配置和排障信息 |
 
 ### P1：评审材料
 
@@ -151,7 +426,7 @@ Harness
 | --- | --- | --- |
 | `v0.4` | 状态可见 | 增强 `task.py current`，增加 JSON 输出，补齐缺失证据提示 |
 | `v0.5` | 安装可信 | 增加 `install-state.json`、安装诊断、版本展示 |
-| `v0.6` | 项目画像 | 增加项目开发指南和接口索引生成能力 |
+| `v0.6` | 项目文档扫描 Skill | 默认安装 `project-doc-scanner`，生成项目开发指南、接口文档、项目画像和审阅状态 |
 | `v0.7` | 评审材料 | 增加 `review-spec.md` 生成器 |
 | `v0.8` | 团队看板 | 基于 JSON 状态输出做本地 Web 页面 |
 | `v1.0` | 企业试点 | 模板配置、团队规范、统计报表、接入文档统一成正式版本 |
@@ -185,8 +460,31 @@ Harness
 | `EP-002` | 增加任务列表 JSON 输出 | `task.py list --json` 能返回全部任务状态 |
 | `EP-003` | 增加安装状态记录 | 安装后生成 `.harness/install-state.json` |
 | `EP-004` | 增加安装诊断命令 | 能检查脚本、hooks、skills、agents 是否齐全 |
-| `EP-005` | 生成项目开发指南 | 能基于当前项目生成 `docs/dev-guide.md` |
-| `EP-006` | 生成技术评审文档 | 能基于任务产物生成 `review-spec.md` |
+| `EP-005` | 增加安装进度事件 | CLI 显示进度条，并写入 `.harness/runtime/install-progress.json` |
+| `EP-006` | 默认安装项目文档扫描 Skill | 安装后存在 `.claude/skills/project-doc-scanner/SKILL.md` |
+| `EP-007` | 增加项目文档配置 | Skill 能生成或读取 `.harness/project-docs.json` |
+| `EP-008` | 实现项目文档扫描流程 | Skill 能先检测项目状态、确认模板来源和写入范围，再调度子代理扫描 |
+| `EP-009` | 生成项目开发指南 | 能基于当前项目生成 `docs/standards/project-guide.md` |
+| `EP-010` | 生成接口文档 | 能生成 `docs/standards/api/url-index.md` 和 `docs/standards/api/detail.md` |
+| `EP-011` | 增加项目文档审阅状态 | 能记录 `draft`、`approved`、`needs_update`、`stale` |
+| `EP-012` | 增加审阅保护能力 | `approved` 文档默认生成候选稿，用户同意覆盖后自动备份旧版本 |
+| `EP-013` | 生成扫描摘要和待审阅清单 | 能生成 `.harness/project-docs/reviews/<timestamp>-scan-summary.md` 和 `docs/standards/project-docs-review.md` |
+| `EP-014` | 生成技术评审文档 | 能基于任务产物生成 `review-spec.md` |
+
+### 项目文档扫描 Skill 首版任务
+
+首版先支持 Claude Code，目标是让 `project-doc-scanner` 能随 Harness 安装进入项目，并完成项目文档扫描的基础状态管理、索引更新和文档骨架生成。
+
+| 顺序 | 任务 | 交付内容 | 验收标准 |
+| ---: | --- | --- | --- |
+| 1 | 安装 `project-doc-scanner` Skill | 在安装器中写入 `.claude/skills/project-doc-scanner/SKILL.md` | `init-harness.py` 安装后目标项目存在该 Skill 文件 |
+| 2 | 新增 `project.py` 脚本 | 写入 `.harness/scripts/project.py`，提供项目文档状态管理入口 | 支持 `python3 .harness/scripts/project.py docs status` 和 `docs init-config` |
+| 3 | 管理项目文档配置 | 读写 `.harness/project-docs.json` | 缺失配置时能生成默认配置，已有配置时能读取并展示摘要 |
+| 4 | 管理项目画像状态 | 读写 `.harness/project-profile.json` | 能记录文档位置、审阅状态、内容哈希、生成时间和扫描摘要位置 |
+| 5 | 更新文档索引 | 使用受控区块更新 `docs/index.md` 和 `docs/standards/index.md` | 区块外原有内容保持不变，区块重复执行时只替换 Harness 管理区块 |
+| 6 | 固化 Skill 交互流程 | 在 `SKILL.md` 中定义“先检测，再确认，再扫描” | 已有文档时提示增量扫描，缺少文档时提示首次扫描，缺少配置时询问模板来源 |
+| 7 | 生成首版文档骨架 | 生成 `project-guide.md`、`api/url-index.md`、`api/detail.md`、`project-docs-review.md` | 文档包含判断、证据、置信度、待确认项结构 |
+| 8 | 支持审阅状态管理 | 支持 `draft`、`approved`、`needs_update`、`stale` | `docs approve --all` 能把目标文档状态更新为 `approved` 并记录哈希 |
 
 ## 评估指标
 
@@ -194,6 +492,8 @@ Harness
 | --- | --- |
 | 接入项目数 | 已安装 Harness 的项目数量 |
 | 活跃任务数 | 一段时间内使用 Harness 推进的需求数量 |
+| 项目文档初始化率 | 已生成项目知识包的项目比例 |
+| 项目文档审阅通过率 | 进入 `approved` 状态的项目知识文档比例 |
 | 阶段完成率 | 任务从 `clarify` 推进到 `done` 的比例 |
 | 验证通过率 | `verify.py all` 成功的比例 |
 | 证据完整率 | 必要产物齐全的任务比例 |

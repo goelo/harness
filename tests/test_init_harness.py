@@ -53,6 +53,7 @@ class TestInitHarnessStructure(InitHarnessTestCase):
         self.assertTrue((harness / "scripts" / "task.py").is_file())
         self.assertTrue((harness / "scripts" / "verify.py").is_file())
         self.assertTrue((harness / "scripts" / "context.py").is_file())
+        self.assertTrue((harness / "scripts" / "project.py").is_file())
         self.assertFalse((harness / "tasks").exists())
         self.assertFalse((harness / "spec").exists())
 
@@ -113,6 +114,8 @@ class TestInitHarnessSkills(InitHarnessTestCase):
 
         claude_skills = self.project_dir / ".claude" / "skills"
         codex_skills = self.home_dir / ".codex" / "skills"
+        self.assertTrue((claude_skills / "project-doc-scanner" / "SKILL.md").is_file())
+        self.assertFalse((codex_skills / "project-doc-scanner").exists())
         for base in (claude_skills, codex_skills):
             for skill_name in (
                 "requirement-confirmation",
@@ -138,6 +141,10 @@ class TestInitHarnessSkills(InitHarnessTestCase):
         self.assertIn("requirement-development", harness_compat)
         self.assertIn("name: grill-me", grill_compat)
         self.assertIn("requirement-confirmation", grill_compat)
+        project_doc_scanner = (claude_skills / "project-doc-scanner" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("name: project-doc-scanner", project_doc_scanner)
+        self.assertIn("先检测，再确认，再扫描", project_doc_scanner)
+        self.assertIn(".harness/scripts/project.py docs status", project_doc_scanner)
 
     def test_managed_skills_refresh_without_overwriting_custom_skills(self):
         managed_dir = self.project_dir / ".claude" / "skills" / "harness-implement"
