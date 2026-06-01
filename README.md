@@ -19,11 +19,11 @@ HARNESS_TARGET=/path/to/project \
     curl -fsSL https://git.xiaojukeji.com/morganli/harness/raw/master/install-internal.sh | bash
 ```
 
-跳过 RTK 和 Caveman 自动安装：
+跳过 RTK、Caveman 和 Cooper 自动安装：
 
 ```bash
 curl -fsSL https://git.xiaojukeji.com/morganli/harness/raw/master/install-internal.sh \
-    | bash -s -- --no-rtk --no-caveman
+    | bash -s -- --no-rtk --no-caveman --no-cooper
 ```
 
 ## 安装产物
@@ -46,6 +46,8 @@ curl -fsSL https://git.xiaojukeji.com/morganli/harness/raw/master/install-intern
 | `.claude/skills/requirement-development/SKILL.md` | 需求开发 skill |
 | `.claude/skills/grill-me/SKILL.md` | 旧名称兼容入口，转入需求确认 |
 | `.claude/skills/harness-implement/SKILL.md` | 旧名称兼容入口，转入需求开发 |
+| `.claude/skills/cooper/SKILL.md` | Cooper 项目级 skill，默认通过 SkillsHub 安装 |
+| `~/.codex/skills/cooper/SKILL.md` | Cooper Codex 全局 skill，默认通过 SkillsHub 安装 |
 | `CLAUDE.md`、`AGENTS.md` | 给模型读取的项目协作规则 |
 
 ## 使用方式

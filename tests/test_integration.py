@@ -51,7 +51,7 @@ class TestFullHarnessLoop(unittest.TestCase):
         wf_hook = str(Path(__file__).parent.parent / "harness_hooks" / "harness-workflow-state.py")
 
         # 1. Init
-        result = self._run(init_script, "--target", str(self.project_dir), "--no-rtk", "--no-caveman")
+        result = self._run(init_script, "--target", str(self.project_dir), "--no-rtk", "--no-caveman", "--no-cooper")
         self.assertEqual(result.returncode, 0, f"init failed: {result.stderr}")
 
         # 2. Create task

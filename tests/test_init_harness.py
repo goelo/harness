@@ -25,19 +25,24 @@ class InitHarnessTestCase(unittest.TestCase):
         shutil.rmtree(self.project_dir)
         shutil.rmtree(self.home_dir)
 
-    def run_init(self, *extra_args):
+    def run_init(self, *extra_args, install_cooper=False, extra_env=None):
         args = [sys.executable, str(INIT_SCRIPT), "--target", str(self.project_dir)]
         if "--check-deps" not in extra_args:
             if "--no-rtk" not in extra_args:
                 args.append("--no-rtk")
             if "--no-caveman" not in extra_args:
                 args.append("--no-caveman")
+            if not install_cooper and "--no-cooper" not in extra_args:
+                args.append("--no-cooper")
         args.extend(extra_args)
+        env = {**os.environ, "HOME": str(self.home_dir)}
+        if extra_env:
+            env.update(extra_env)
         return subprocess.run(
             args,
             capture_output=True,
             text=True,
-            env={**os.environ, "HOME": str(self.home_dir)},
+            env=env,
         )
 
 
@@ -188,6 +193,44 @@ class TestInitHarnessSkills(InitHarnessTestCase):
         self.assertFalse(managed.exists())
         self.assertTrue((custom / "SKILL.md").is_file())
 
+    def test_installs_cooper_skill_for_claude_and_codex_via_d_skills(self):
+        fake_bin = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, fake_bin)
+        d_skills = fake_bin / "d-skills"
+        d_skills.write_text(
+            """#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+if "--version" in args:
+    print("0.3.16")
+    raise SystemExit(0)
+if args[:2] == ["add", "cooper"]:
+    if "-g" in args:
+        skill_dir = Path(os.environ["HOME"]) / ".codex" / "skills" / "cooper"
+    else:
+        skill_dir = Path.cwd() / ".claude" / "skills" / "cooper"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text("---\\nname: cooper\\n---\\n", encoding="utf-8")
+    raise SystemExit(0)
+raise SystemExit(2)
+""",
+            encoding="utf-8",
+        )
+        d_skills.chmod(0o755)
+
+        result = self.run_init(
+            install_cooper=True,
+            extra_env={"PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}"},
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.project_dir / ".claude" / "skills" / "cooper" / "SKILL.md").is_file())
+        self.assertTrue((self.home_dir / ".codex" / "skills" / "cooper" / "SKILL.md").is_file())
+        self.assertIn("cooper", result.stdout.lower())
+
 
 class TestInitHarnessHooksAndInstructions(InitHarnessTestCase):
     def test_creates_hooks_settings_and_instruction_files(self):
@@ -294,7 +337,7 @@ class TestInitHarnessContextScripts(InitHarnessTestCase):
         shutil.copy2(INIT_SCRIPT, standalone_init)
 
         result = subprocess.run(
-            [sys.executable, str(standalone_init), "--target", str(self.project_dir), "--no-rtk", "--no-caveman"],
+            [sys.executable, str(standalone_init), "--target", str(self.project_dir), "--no-rtk", "--no-caveman", "--no-cooper"],
             capture_output=True,
             text=True,
             env={**os.environ, "HOME": str(self.home_dir)},
@@ -342,18 +385,20 @@ class TestInitHarnessContextScripts(InitHarnessTestCase):
 
 class TestDependencyFlags(InitHarnessTestCase):
     def test_no_rtk_and_no_caveman_flags_report_skipped(self):
-        result = self.run_init("--no-rtk", "--no-caveman")
+        result = self.run_init("--no-rtk", "--no-caveman", "--no-cooper")
         self.assertEqual(result.returncode, 0, result.stderr)
         combined = result.stdout + result.stderr
         self.assertIn("rtk", combined.lower())
         self.assertIn("caveman", combined.lower())
+        self.assertIn("cooper", combined.lower())
         self.assertIn("skipped", combined.lower())
 
     def test_check_deps_reports_without_writing_project_files(self):
-        result = self.run_init("--check-deps", "--no-rtk", "--no-caveman")
+        result = self.run_init("--check-deps", "--no-rtk", "--no-caveman", "--no-cooper")
         self.assertEqual(result.returncode, 0, result.stderr)
         combined = result.stdout + result.stderr
         self.assertIn("Check-deps", combined)
+        self.assertIn("cooper", combined.lower())
         self.assertFalse((self.project_dir / ".harness").exists())
 
     def test_help_mentions_dependency_flags(self):
@@ -361,6 +406,7 @@ class TestDependencyFlags(InitHarnessTestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("--no-rtk", result.stdout)
         self.assertIn("--no-caveman", result.stdout)
+        self.assertIn("--no-cooper", result.stdout)
         self.assertIn("--check-deps", result.stdout)
 
 

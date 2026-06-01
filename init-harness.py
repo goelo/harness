@@ -23,6 +23,8 @@ RTK_INSTALL_URL = (
 CAVEMAN_INSTALL_URL = (
     "https://git.xiaojukeji.com/morganli/caveman/raw/main/install-internal.sh"
 )
+COOPER_SKILL_URL = "https://skillshub.intra.xiaojukeji.com/skill/cooper"
+D_SKILLS_NPM_REGISTRY = "http://npm.intra.xiaojukeji.com"
 
 HARNESS_HOOKS = {
     "SessionStart": [
@@ -2978,6 +2980,100 @@ def install_caveman(skip: bool, dry_run: bool) -> str:
     return "installed" if _caveman_present() else "install_failed"
 
 
+def _cooper_present(target: Path) -> bool:
+    """Return true when Cooper is available to Claude Code and Codex."""
+    claude_skill = target / ".claude" / "skills" / "cooper" / "SKILL.md"
+    codex_skill = Path.home() / ".codex" / "skills" / "cooper" / "SKILL.md"
+    return claude_skill.is_file() and codex_skill.is_file()
+
+
+def _d_skills_usable() -> bool:
+    """Check whether d-skills can execute commands in the current environment."""
+    if not shutil.which("d-skills"):
+        return False
+    try:
+        result = subprocess.run(
+            ["d-skills", "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return False
+    combined = result.stdout + result.stderr
+    if "过低" in combined or "最低要求" in combined:
+        return False
+    return result.returncode == 0
+
+
+def _ensure_d_skills() -> bool:
+    """Install or refresh d-skills so Cooper can be installed from SkillsHub."""
+    if _d_skills_usable():
+        return True
+    if not shutil.which("npm"):
+        return False
+    try:
+        subprocess.run(
+            ["npm", "install", "d-skills@latest", f"--registry={D_SKILLS_NPM_REGISTRY}", "-g"],
+            check=False,
+            timeout=180,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return False
+    return _d_skills_usable()
+
+
+def install_cooper(skip: bool, dry_run: bool, target: Path) -> str:
+    """Best-effort Cooper skill install via SkillsHub d-skills CLI.
+
+    Status values: skipped / already_installed / would_install / would_skip /
+    installed / install_failed / needs_d_skills.
+    """
+    if skip:
+        return "skipped"
+    if _cooper_present(target):
+        return "already_installed"
+
+    if dry_run:
+        return "would_install" if _d_skills_usable() or shutil.which("npm") else "would_skip"
+
+    if not _ensure_d_skills():
+        return "needs_d_skills"
+
+    commands = [
+        ["d-skills", "add", "cooper", "-a", "claude-code", "-y", "--copy"],
+        ["d-skills", "add", "cooper", "-g", "-a", "codex", "-y", "--copy"],
+    ]
+    for command in commands:
+        try:
+            result = subprocess.run(command, cwd=target, check=False, timeout=180)
+        except (subprocess.SubprocessError, OSError):
+            return "install_failed"
+        if result.returncode != 0:
+            return "install_failed"
+
+    return "installed" if _cooper_present(target) else "install_failed"
+
+
+def report_cooper_status(status: str) -> None:
+    """Print a human-readable line summarizing Cooper install status."""
+    messages = {
+        "skipped":           "Cooper auto-install skipped (--no-cooper).",
+        "already_installed": "Cooper skill already installed for Claude Code and Codex.",
+        "would_install":     "Cooper would be installed from SkillsHub (--check-deps; not run).",
+        "would_skip":        "Cooper missing AND d-skills/npm unavailable — would skip.",
+        "installed":         "Cooper skill installed from SkillsHub for Claude Code and Codex.",
+        "install_failed":    "Cooper install attempted but verification failed; install manually:\n"
+                             "    d-skills add cooper -a claude-code -y --copy\n"
+                             "    d-skills add cooper -g -a codex -y --copy",
+        "needs_d_skills":    "Cooper not installed and d-skills could not be prepared.\n"
+                             f"    Install d-skills first: npm install d-skills@latest --registry={D_SKILLS_NPM_REGISTRY} -g\n"
+                             f"    Then open {COOPER_SKILL_URL}",
+    }
+    print(f"  cooper: {messages.get(status, status)}")
+
+
 def report_caveman_status(status: str) -> None:
     """Print a human-readable line summarizing Caveman install status."""
     messages = {
@@ -3031,6 +3127,11 @@ def main():
         help="Skip Caveman auto-install (CI / restricted networks)",
     )
     parser.add_argument(
+        "--no-cooper",
+        action="store_true",
+        help="Skip Cooper skill auto-install from SkillsHub (CI / restricted networks)",
+    )
+    parser.add_argument(
         "--check-deps",
         action="store_true",
         help="Dry-run: report what would be installed without doing it",
@@ -3042,9 +3143,11 @@ def main():
         # Dry-run: just report status, don't write files
         rtk_status = install_rtk(skip=args.no_rtk, dry_run=True)
         caveman_status = install_caveman(skip=args.no_caveman, dry_run=True)
+        cooper_status = install_cooper(skip=args.no_cooper, dry_run=True, target=target)
         print(f"Check-deps for harness target: {target}")
         report_rtk_status(rtk_status)
         report_caveman_status(caveman_status)
+        report_cooper_status(cooper_status)
         return
 
     create_harness_skeleton(target)
@@ -3062,6 +3165,7 @@ def main():
 
     rtk_status = install_rtk(skip=args.no_rtk, dry_run=False)
     caveman_status = install_caveman(skip=args.no_caveman, dry_run=False)
+    cooper_status = install_cooper(skip=args.no_cooper, dry_run=False, target=target)
 
     print(f"✓ Harness initialized in {target}")
     print(f"  .harness/  — scripts, workflow, verification config")
@@ -3074,6 +3178,7 @@ def main():
     print(f"  AGENTS.md  — harness conventions (created or appended)")
     report_rtk_status(rtk_status)
     report_caveman_status(caveman_status)
+    report_cooper_status(cooper_status)
     print("")
     print("下一步建议配置提交前检查:")
     print("  请配置 harness verify。先读取当前项目的构建和测试入口，给出 .harness/verify.json 推荐配置，等确认后再写入。")

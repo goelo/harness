@@ -8,7 +8,7 @@
 # Pass extra flags to init-harness.py (note the -s -- separator):
 #
 #   curl -fsSL https://git.xiaojukeji.com/morganli/harness/raw/master/install-internal.sh \
-#       | bash -s -- --no-rtk --no-caveman
+#       | bash -s -- --no-rtk --no-caveman --no-cooper
 #
 # Override defaults via env vars:
 #
