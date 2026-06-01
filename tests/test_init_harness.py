@@ -67,6 +67,17 @@ class TestInitHarnessStructure(InitHarnessTestCase):
         self.assertTrue((self.project_dir / "docs" / "index.md").is_file())
         self.assertTrue((self.project_dir / "docs" / "standards" / "index.md").is_file())
 
+    def test_prints_numbered_next_steps_including_project_scan(self):
+        result = self.run_init()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        self.assertIn("下一步建议:", result.stdout)
+        self.assertIn("1. 配置提交前检查", result.stdout)
+        self.assertIn("2. 扫描当前项目", result.stdout)
+        self.assertIn("3. 开始需求开发", result.stdout)
+        self.assertIn("已安装 skill: harness-configure-verify", result.stdout)
+        self.assertIn("已安装 skill: project-doc-scanner", result.stdout)
+
     def test_verify_config_template_uses_required_checks(self):
         self.run_init()
 
@@ -220,6 +231,24 @@ raise SystemExit(2)
             encoding="utf-8",
         )
         d_skills.chmod(0o755)
+        mcporter = fake_bin / "mcporter"
+        mcporter.write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
+        mcporter.chmod(0o755)
+        mcporter_config = self.home_dir / ".mcporter"
+        mcporter_config.mkdir()
+        (mcporter_config / "mcporter.json").write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "Cooper": {
+                            "baseUrl": "http://127.0.0.1:28582/v1/hub/cooper_mcp",
+                            "headers": {"Authorization": f"Bearer {'a' * 120}"},
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
 
         result = self.run_init(
             install_cooper=True,
@@ -230,6 +259,248 @@ raise SystemExit(2)
         self.assertTrue((self.project_dir / ".claude" / "skills" / "cooper" / "SKILL.md").is_file())
         self.assertTrue((self.home_dir / ".codex" / "skills" / "cooper" / "SKILL.md").is_file())
         self.assertIn("cooper", result.stdout.lower())
+        self.assertIn("d-skills: available", result.stdout)
+        self.assertIn("cooper mcp: configured", result.stdout)
+
+    def test_uses_npm_global_d_skills_after_refreshing_stale_path_entry(self):
+        fake_bin = Path(tempfile.mkdtemp())
+        fake_prefix = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, fake_bin)
+        self.addCleanup(shutil.rmtree, fake_prefix)
+
+        stale_d_skills = fake_bin / "d-skills"
+        stale_d_skills.write_text(
+            """#!/usr/bin/env sh
+echo "🚨 您的 d-skills 版本 (0.3.9) 过低，无法继续使用。最低要求: 0.3.16。"
+exit 0
+""",
+            encoding="utf-8",
+        )
+        stale_d_skills.chmod(0o755)
+
+        npm = fake_bin / "npm"
+        npm.write_text(
+            """#!/usr/bin/env python3
+import os
+import stat
+import sys
+from pathlib import Path
+
+prefix = Path(os.environ["FAKE_NPM_PREFIX"])
+args = sys.argv[1:]
+if args == ["prefix", "-g"]:
+    print(prefix)
+    raise SystemExit(0)
+if args[:2] == ["install", "d-skills@latest"]:
+    bin_dir = prefix / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    d_skills = bin_dir / "d-skills"
+    d_skills.write_text('''#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+args = sys.argv[1:]
+if "--version" in args:
+    print("0.3.16")
+    raise SystemExit(0)
+if args[:2] == ["add", "cooper"]:
+    if "-g" in args:
+        skill_dir = Path(os.environ["HOME"]) / ".codex" / "skills" / "cooper"
+    else:
+        skill_dir = Path.cwd() / ".claude" / "skills" / "cooper"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text("---\\\\nname: cooper\\\\n---\\\\n", encoding="utf-8")
+    raise SystemExit(0)
+raise SystemExit(2)
+''', encoding="utf-8")
+    d_skills.chmod(d_skills.stat().st_mode | stat.S_IXUSR)
+    raise SystemExit(0)
+if args[:2] == ["install", "mcporter"]:
+    bin_dir = prefix / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    mcporter = bin_dir / "mcporter"
+    mcporter.write_text("#!/usr/bin/env sh\\nexit 0\\n", encoding="utf-8")
+    mcporter.chmod(mcporter.stat().st_mode | stat.S_IXUSR)
+    raise SystemExit(0)
+raise SystemExit(2)
+""",
+            encoding="utf-8",
+        )
+        npm.chmod(0o755)
+
+        result = self.run_init(
+            install_cooper=True,
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "FAKE_NPM_PREFIX": str(fake_prefix),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("cooper: Cooper skill installed", result.stdout)
+        self.assertIn("d-skills: available", result.stdout)
+        self.assertNotIn("d-skills could not be prepared", result.stdout)
+        self.assertNotIn("mcporter not found", result.stdout)
+
+    def test_reports_d_skills_login_required_when_cooper_add_requires_auth(self):
+        fake_bin = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, fake_bin)
+
+        d_skills = fake_bin / "d-skills"
+        d_skills.write_text(
+            """#!/usr/bin/env python3
+import sys
+
+args = sys.argv[1:]
+if "--version" in args:
+    print("0.3.16")
+    raise SystemExit(0)
+if args[:2] == ["add", "cooper"]:
+    print("当前命令需要先登录后才能执行。")
+    print("请先运行 d-skills login 完成登录。")
+    raise SystemExit(1)
+raise SystemExit(2)
+""",
+            encoding="utf-8",
+        )
+        d_skills.chmod(0o755)
+
+        mcporter = fake_bin / "mcporter"
+        mcporter.write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
+        mcporter.chmod(0o755)
+        mcporter_config = self.home_dir / ".mcporter"
+        mcporter_config.mkdir()
+        (mcporter_config / "mcporter.json").write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "Cooper": {
+                            "baseUrl": "http://127.0.0.1:28582/v1/hub/cooper_mcp",
+                            "headers": {"Authorization": f"Bearer {'a' * 120}"},
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = self.run_init(
+            install_cooper=True,
+            extra_env={"PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}"},
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("d-skills login", result.stdout)
+        self.assertIn("cooper: Cooper skill requires d-skills login", result.stdout)
+        self.assertIn("d-skills: available", result.stdout)
+        self.assertIn("cooper mcp: configured", result.stdout)
+
+    def test_accepts_codex_cooper_skill_installed_in_agents_global_dir(self):
+        fake_bin = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, fake_bin)
+        d_skills = fake_bin / "d-skills"
+        d_skills.write_text(
+            """#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+if "--version" in args:
+    print("0.3.16")
+    raise SystemExit(0)
+if args[:2] == ["add", "cooper"]:
+    if "-g" in args:
+        skill_dir = Path(os.environ["HOME"]) / ".agents" / "skills" / "cooper"
+    else:
+        skill_dir = Path.cwd() / ".claude" / "skills" / "cooper"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text("---\\nname: cooper\\n---\\n", encoding="utf-8")
+    raise SystemExit(0)
+raise SystemExit(2)
+""",
+            encoding="utf-8",
+        )
+        d_skills.chmod(0o755)
+
+        result = self.run_init(
+            install_cooper=True,
+            extra_env={"PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}"},
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.project_dir / ".claude" / "skills" / "cooper" / "SKILL.md").is_file())
+        self.assertTrue((self.home_dir / ".agents" / "skills" / "cooper" / "SKILL.md").is_file())
+        self.assertIn("cooper: Cooper skill installed", result.stdout)
+        self.assertNotIn("verification failed", result.stdout)
+
+    def test_reports_d_skills_available_when_cooper_is_already_installed_and_path_has_stale_binary(self):
+        fake_bin = Path(tempfile.mkdtemp())
+        fake_prefix = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, fake_bin)
+        self.addCleanup(shutil.rmtree, fake_prefix)
+
+        stale_d_skills = fake_bin / "d-skills"
+        stale_d_skills.write_text(
+            """#!/usr/bin/env sh
+echo "🚨 您的 d-skills 版本 (0.3.9) 过低，无法继续使用。最低要求: 0.3.16。"
+exit 0
+""",
+            encoding="utf-8",
+        )
+        stale_d_skills.chmod(0o755)
+
+        prefix_bin = fake_prefix / "bin"
+        prefix_bin.mkdir(parents=True)
+        fresh_d_skills = prefix_bin / "d-skills"
+        fresh_d_skills.write_text(
+            """#!/usr/bin/env sh
+echo "0.3.16"
+exit 0
+""",
+            encoding="utf-8",
+        )
+        fresh_d_skills.chmod(0o755)
+
+        npm = fake_bin / "npm"
+        npm.write_text(
+            """#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+if sys.argv[1:] == ["prefix", "-g"]:
+    print(Path(os.environ["FAKE_NPM_PREFIX"]))
+    raise SystemExit(0)
+raise SystemExit(2)
+""",
+            encoding="utf-8",
+        )
+        npm.chmod(0o755)
+
+        (self.project_dir / ".claude" / "skills" / "cooper").mkdir(parents=True)
+        (self.project_dir / ".claude" / "skills" / "cooper" / "SKILL.md").write_text(
+            "---\nname: cooper\n---\n",
+            encoding="utf-8",
+        )
+        (self.home_dir / ".agents" / "skills" / "cooper").mkdir(parents=True)
+        (self.home_dir / ".agents" / "skills" / "cooper" / "SKILL.md").write_text(
+            "---\nname: cooper\n---\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_init(
+            install_cooper=True,
+            extra_env={
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "FAKE_NPM_PREFIX": str(fake_prefix),
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("cooper: Cooper skill already installed", result.stdout)
+        self.assertIn("d-skills: available", result.stdout)
+        self.assertNotIn("d-skills: unavailable", result.stdout)
 
 
 class TestInitHarnessHooksAndInstructions(InitHarnessTestCase):

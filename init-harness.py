@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -24,6 +25,7 @@ CAVEMAN_INSTALL_URL = (
     "https://git.xiaojukeji.com/morganli/caveman/raw/main/install-internal.sh"
 )
 COOPER_SKILL_URL = "https://skillshub.intra.xiaojukeji.com/skill/cooper"
+COOPER_MCP_BASE_URL = "http://127.0.0.1:28582/v1/hub/cooper_mcp"
 D_SKILLS_NPM_REGISTRY = "http://npm.intra.xiaojukeji.com"
 
 HARNESS_HOOKS = {
@@ -940,7 +942,7 @@ from pathlib import Path
 
 LOCAL_CONTEXT_KEY = "local"
 TAG_RE = re.compile(
-    r"\[workflow-phase:([A-Za-z0-9_-]+)\]\s*\n(.*?)\n\s*\[/workflow-phase:\1\]",
+    r"\\[workflow-phase:([A-Za-z0-9_-]+)\\]\\s*\\n(.*?)\\n\\s*\\[/workflow-phase:\\1\\]",
     re.DOTALL,
 )
 
@@ -2983,8 +2985,11 @@ def install_caveman(skip: bool, dry_run: bool) -> str:
 def _cooper_present(target: Path) -> bool:
     """Return true when Cooper is available to Claude Code and Codex."""
     claude_skill = target / ".claude" / "skills" / "cooper" / "SKILL.md"
-    codex_skill = Path.home() / ".codex" / "skills" / "cooper" / "SKILL.md"
-    return claude_skill.is_file() and codex_skill.is_file()
+    codex_skill_candidates = [
+        Path.home() / ".codex" / "skills" / "cooper" / "SKILL.md",
+        Path.home() / ".agents" / "skills" / "cooper" / "SKILL.md",
+    ]
+    return claude_skill.is_file() and any(path.is_file() for path in codex_skill_candidates)
 
 
 def _d_skills_usable() -> bool:
@@ -3007,28 +3012,105 @@ def _d_skills_usable() -> bool:
     return result.returncode == 0
 
 
-def _ensure_d_skills() -> bool:
-    """Install or refresh d-skills so Cooper can be installed from SkillsHub."""
-    if _d_skills_usable():
-        return True
+def _npm_global_bin_dir() -> Path | None:
+    if not shutil.which("npm"):
+        return None
+    try:
+        result = subprocess.run(
+            ["npm", "prefix", "-g"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    prefix = result.stdout.strip()
+    return Path(prefix) / "bin" if prefix else None
+
+
+def _prepend_path(path: Path | None) -> None:
+    if path is None or not path.is_dir():
+        return
+    path_text = str(path)
+    current = os.environ.get("PATH", "")
+    parts = current.split(os.pathsep) if current else []
+    if parts and parts[0] == path_text:
+        return
+    os.environ["PATH"] = os.pathsep.join([path_text, *[part for part in parts if part != path_text]])
+
+
+def _install_global_npm_package(package: str) -> bool:
     if not shutil.which("npm"):
         return False
     try:
-        subprocess.run(
-            ["npm", "install", "d-skills@latest", f"--registry={D_SKILLS_NPM_REGISTRY}", "-g"],
+        result = subprocess.run(
+            ["npm", "install", package, f"--registry={D_SKILLS_NPM_REGISTRY}", "-g"],
             check=False,
             timeout=180,
         )
     except (subprocess.SubprocessError, OSError):
         return False
+    _prepend_path(_npm_global_bin_dir())
+    return result.returncode == 0
+
+
+def _ensure_d_skills() -> bool:
+    """Install or refresh d-skills so Cooper can be installed from SkillsHub."""
+    if _d_skills_usable():
+        return True
+    _prepend_path(_npm_global_bin_dir())
+    if _d_skills_usable():
+        return True
+    if not _install_global_npm_package("d-skills@latest"):
+        return False
     return _d_skills_usable()
+
+
+def _ensure_mcporter() -> bool:
+    if shutil.which("mcporter"):
+        return True
+    _prepend_path(_npm_global_bin_dir())
+    if shutil.which("mcporter"):
+        return True
+    if not _install_global_npm_package("mcporter"):
+        return False
+    return shutil.which("mcporter") is not None
+
+
+def _cooper_mcp_status() -> str:
+    if not shutil.which("mcporter"):
+        return "needs_mcporter"
+
+    config_path = Path.home() / ".mcporter" / "mcporter.json"
+    if not config_path.is_file():
+        return "missing_config"
+
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return "invalid_config"
+
+    cooper = config.get("mcpServers", {}).get("Cooper")
+    if not isinstance(cooper, dict):
+        return "missing_cooper"
+    if cooper.get("baseUrl") != COOPER_MCP_BASE_URL:
+        return "wrong_base_url"
+
+    headers = cooper.get("headers", {})
+    authorization = headers.get("Authorization") if isinstance(headers, dict) else None
+    if not isinstance(authorization, str) or len(authorization) < 100:
+        return "needs_authorization"
+    return "configured"
 
 
 def install_cooper(skip: bool, dry_run: bool, target: Path) -> str:
     """Best-effort Cooper skill install via SkillsHub d-skills CLI.
 
     Status values: skipped / already_installed / would_install / would_skip /
-    installed / install_failed / needs_d_skills.
+    installed / install_failed / needs_d_skills / needs_d_skills_login.
     """
     if skip:
         return "skipped"
@@ -3040,6 +3122,7 @@ def install_cooper(skip: bool, dry_run: bool, target: Path) -> str:
 
     if not _ensure_d_skills():
         return "needs_d_skills"
+    _ensure_mcporter()
 
     commands = [
         ["d-skills", "add", "cooper", "-a", "claude-code", "-y", "--copy"],
@@ -3047,10 +3130,20 @@ def install_cooper(skip: bool, dry_run: bool, target: Path) -> str:
     ]
     for command in commands:
         try:
-            result = subprocess.run(command, cwd=target, check=False, timeout=180)
+            result = subprocess.run(
+                command,
+                cwd=target,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=180,
+            )
         except (subprocess.SubprocessError, OSError):
             return "install_failed"
         if result.returncode != 0:
+            combined = result.stdout + result.stderr
+            if "d-skills login" in combined or "需要先登录" in combined:
+                return "needs_d_skills_login"
             return "install_failed"
 
     return "installed" if _cooper_present(target) else "install_failed"
@@ -3064,6 +3157,10 @@ def report_cooper_status(status: str) -> None:
         "would_install":     "Cooper would be installed from SkillsHub (--check-deps; not run).",
         "would_skip":        "Cooper missing AND d-skills/npm unavailable — would skip.",
         "installed":         "Cooper skill installed from SkillsHub for Claude Code and Codex.",
+        "needs_d_skills_login": "Cooper skill requires d-skills login:\n"
+                                "    d-skills login\n"
+                                "    d-skills add cooper -a claude-code -y --copy\n"
+                                "    d-skills add cooper -g -a codex -y --copy",
         "install_failed":    "Cooper install attempted but verification failed; install manually:\n"
                              "    d-skills add cooper -a claude-code -y --copy\n"
                              "    d-skills add cooper -g -a codex -y --copy",
@@ -3072,6 +3169,32 @@ def report_cooper_status(status: str) -> None:
                              f"    Then open {COOPER_SKILL_URL}",
     }
     print(f"  cooper: {messages.get(status, status)}")
+
+
+def report_cooper_environment(status: str) -> None:
+    if status == "skipped":
+        return
+
+    _prepend_path(_npm_global_bin_dir())
+    if _d_skills_usable():
+        print("  d-skills: available.")
+    else:
+        print(
+            "  d-skills: unavailable; install manually:\n"
+            f"    npm install d-skills@latest --registry={D_SKILLS_NPM_REGISTRY} -g"
+        )
+
+    mcp_messages = {
+        "configured":            f"configured ({COOPER_MCP_BASE_URL}).",
+        "needs_mcporter":        "mcporter not found; install manually: npm install -g mcporter",
+        "missing_config":        "missing ~/.mcporter/mcporter.json.",
+        "invalid_config":        "invalid ~/.mcporter/mcporter.json.",
+        "missing_cooper":        "missing Cooper entry in ~/.mcporter/mcporter.json.",
+        "wrong_base_url":        f"Cooper baseUrl should be {COOPER_MCP_BASE_URL}.",
+        "needs_authorization":   "Cooper Authorization is missing or too short.",
+    }
+    mcp_status = _cooper_mcp_status()
+    print(f"  cooper mcp: {mcp_messages.get(mcp_status, mcp_status)}")
 
 
 def report_caveman_status(status: str) -> None:
@@ -3148,6 +3271,7 @@ def main():
         report_rtk_status(rtk_status)
         report_caveman_status(caveman_status)
         report_cooper_status(cooper_status)
+        report_cooper_environment(cooper_status)
         return
 
     create_harness_skeleton(target)
@@ -3179,10 +3303,17 @@ def main():
     report_rtk_status(rtk_status)
     report_caveman_status(caveman_status)
     report_cooper_status(cooper_status)
+    report_cooper_environment(cooper_status)
     print("")
-    print("下一步建议配置提交前检查:")
-    print("  请配置 harness verify。先读取当前项目的构建和测试入口，给出 .harness/verify.json 推荐配置，等确认后再写入。")
-    print("  已安装 skill: harness-configure-verify")
+    print("下一步建议:")
+    print("  1. 配置提交前检查")
+    print("     请配置 harness verify。先读取当前项目的构建和测试入口，给出 .harness/verify.json 推荐配置，确认后再写入。")
+    print("     已安装 skill: harness-configure-verify")
+    print("  2. 扫描当前项目")
+    print("     可先扫描一次项目，生成 docs/standards 下的项目知识文档，后续需求开发会读取这些资料。")
+    print("     已安装 skill: project-doc-scanner")
+    print("  3. 开始需求开发")
+    print("     准备 design.md、spec.md 或 requirements.md 后，使用「按 design.md 开发」进入 requirement-development。")
 
 
 if __name__ == "__main__":
