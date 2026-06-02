@@ -1,0 +1,19 @@
+{
+  "allowed": [
+    "harness_scripts/task.py",
+    "harness_scripts/verify.py",
+    "harness_hooks/**",
+    "init-harness.py",
+    "README.md",
+    "tests/**",
+    "docs/tasks/**",
+    ".harness/**",
+    ".claude/**",
+    ".codex/**",
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".gitignore",
+    "docs/**"
+  ],
+  "denied": []
+}

@@ -94,6 +94,8 @@ class TestWorkflowStateHook(HookTestCase):
         ctx = output["hookSpecificOutput"]["additionalContext"]
         self.assertIn("<workflow-state>", ctx)
         self.assertIn("没有当前任务", ctx)
+        self.assertIn("Required skill: requirement-confirmation", ctx)
+        self.assertNotIn("Required skill: requirement-development", ctx)
 
     def test_task_uses_phase_not_status(self):
         self.write_task(phase="green")
@@ -102,6 +104,7 @@ class TestWorkflowStateHook(HookTestCase):
         self.assertIn("Phase: green", ctx)
         self.assertIn("编码实现阶段", ctx)
         self.assertIn("Required skill: requirement-development", ctx)
+        self.assertIn("Required subagent: developer", ctx)
 
 
 class TestSessionStartHook(HookTestCase):
@@ -116,8 +119,17 @@ class TestSessionStartHook(HookTestCase):
         self.assertIn("订单超时控制", ctx)
         self.assertIn("doc-plan", ctx)
         self.assertIn("Required skill: requirement-development", ctx)
+        self.assertIn("Required subagent: architect", ctx)
         self.assertIn("继续需求开发", ctx)
         self.assertIn("查看当前需求开发状态", ctx)
+
+    def test_no_active_task_requires_requirement_confirmation(self):
+        output = _run_hook(self.hook_path, {"cwd": str(self.project_dir)})
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("No active task.", ctx)
+        self.assertIn("Required skill: requirement-confirmation", ctx)
+        self.assertIn("按 design.md 开发", ctx)
+        self.assertNotIn("Required skill: requirement-development", ctx)
 
     def test_exports_context_id_to_claude_env_file(self):
         env_file = self.project_dir / "claude_env"
@@ -191,7 +203,8 @@ class TestInjectContextHook(HookTestCase):
         )
         ctx = output["hookSpecificOutput"]["additionalContext"]
         self.assertIn("没有 active task", ctx)
-        self.assertIn("task.py create", ctx)
+        self.assertIn("requirement-confirmation", ctx)
+        self.assertNotIn("requirement-development 创建 task", ctx)
 
     def test_no_active_task_blocks_task_create_style_development_tool(self):
         output = _run_hook(
@@ -205,6 +218,7 @@ class TestInjectContextHook(HookTestCase):
         ctx = output["hookSpecificOutput"]["additionalContext"]
         self.assertIn("没有 active task", ctx)
         self.assertIn("禁止启动开发子任务", ctx)
+        self.assertIn("requirement-confirmation", ctx)
 
     def test_no_active_task_blocks_business_code_edit(self):
         (self.project_dir / "src").mkdir(exist_ok=True)
@@ -218,6 +232,7 @@ class TestInjectContextHook(HookTestCase):
         )
         ctx = output["hookSpecificOutput"]["additionalContext"]
         self.assertIn("没有 active task", ctx)
+        self.assertIn("requirement-confirmation", ctx)
 
     def test_doc_plan_blocks_business_code_edit(self):
         self.write_task(phase="doc-plan")

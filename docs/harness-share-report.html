@@ -1,0 +1,1492 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HARNESS · 企业 AI 研发方法论 · 2026/06</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --paper: #F5F1E8;
+      --paper-deep: #EBE4D2;
+      --paper-warm: #EFE8D8;
+      --ink: #1A1A1A;
+      --ink-soft: #3A3A3A;
+      --ink-mute: #5A554C;
+      --muted: #8A8275;
+      --rule: rgba(26, 26, 26, 0.16);
+      --rule-soft: rgba(26, 26, 26, 0.08);
+      --accent: #B8412A;
+      --accent-soft: rgba(184, 65, 42, 0.10);
+      --highlight: rgba(184, 65, 42, 0.18);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      font-family: "Noto Sans SC", "Source Han Sans SC", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 17px;
+      line-height: 1.75;
+      color: var(--ink);
+      background-color: var(--paper);
+      background-image:
+        radial-gradient(circle at 1px 1px, rgba(26, 26, 26, 0.022) 1px, transparent 0);
+      background-size: 3px 3px;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow-x: hidden;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    img { max-width: 100%; display: block; }
+    p { margin: 0 0 1em; }
+
+    h1, h2, h3, h4, h5 {
+      font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "STSong", serif;
+      font-weight: 500;
+      margin: 0;
+      letter-spacing: -0.01em;
+      color: var(--ink);
+    }
+
+    /* ---------- Masthead ---------- */
+    .masthead {
+      border-bottom: 2px solid var(--ink);
+      padding: 18px 0;
+      background: var(--paper);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .masthead-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 24px;
+      font-family: "JetBrains Mono", "SF Mono", Menlo, monospace;
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .masthead-brand {
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      color: var(--ink);
+    }
+
+    .masthead-brand span {
+      color: var(--accent);
+      margin: 0 8px;
+    }
+
+    .masthead-nav {
+      display: flex;
+      gap: 24px;
+    }
+
+    .masthead-nav a {
+      color: var(--ink-mute);
+      border-bottom: 1px solid transparent;
+      padding-bottom: 2px;
+      transition: color 0.2s, border-color 0.2s;
+    }
+
+    .masthead-nav a:hover {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    /* ---------- Cover ---------- */
+    .cover {
+      min-height: calc(100vh - 60px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 100px 0 80px;
+      border-bottom: 2px solid var(--ink);
+      position: relative;
+    }
+
+    .cover-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 32px;
+      width: 100%;
+    }
+
+    .cover-kicker {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 36px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .cover-kicker::before {
+      content: "";
+      width: 48px;
+      height: 1px;
+      background: var(--accent);
+    }
+
+    .cover-title {
+      font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif;
+      font-size: clamp(46px, 8.4vw, 112px);
+      line-height: 1.04;
+      letter-spacing: -0.025em;
+      font-weight: 500;
+      margin: 0 0 48px;
+      max-width: 1100px;
+      color: var(--ink);
+    }
+
+    .cover-title em {
+      font-style: normal;
+      color: var(--accent);
+      position: relative;
+    }
+
+    .cover-title em::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0.04em;
+      height: 0.08em;
+      background: var(--highlight);
+      z-index: -1;
+    }
+
+    .cover-deck {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 24px;
+      line-height: 1.55;
+      color: var(--ink-soft);
+      max-width: 760px;
+      margin: 0 0 80px;
+      font-weight: 400;
+    }
+
+    .cover-byline {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 32px;
+      padding-top: 32px;
+      border-top: 1px solid var(--rule);
+      max-width: 980px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .cover-byline div {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .cover-byline strong {
+      color: var(--ink);
+      font-weight: 600;
+      font-size: 13px;
+      letter-spacing: 0.12em;
+    }
+
+    /* ---------- Section ---------- */
+    .section {
+      padding: 120px 0;
+    }
+
+    .section + .section {
+      padding-top: 100px;
+    }
+
+    .section-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 32px;
+    }
+
+    /* ---------- Chapter Header ---------- */
+    .chapter-header {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 64px;
+      margin-bottom: 72px;
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--ink);
+      align-items: start;
+    }
+
+    .chapter-num {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 112px;
+      line-height: 0.9;
+      color: var(--ink);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+    }
+
+    .chapter-meta {
+      padding-top: 12px;
+    }
+
+    .chapter-kicker {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 20px;
+      display: block;
+    }
+
+    .chapter-title {
+      font-size: clamp(34px, 4.4vw, 60px);
+      line-height: 1.1;
+      margin: 0 0 20px;
+      letter-spacing: -0.015em;
+    }
+
+    .chapter-deck {
+      font-size: 17px;
+      line-height: 1.7;
+      color: var(--ink-soft);
+      max-width: 720px;
+      margin: 0;
+    }
+
+    /* ---------- Table of Contents ---------- */
+    .toc {
+      padding: 64px 0;
+      border-bottom: 1px solid var(--rule);
+      background: var(--paper-warm);
+    }
+
+    .toc-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 32px;
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 64px;
+    }
+
+    .toc-label {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--accent);
+      padding-top: 12px;
+    }
+
+    .toc-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      border-top: 1px solid var(--rule);
+    }
+
+    .toc-list li {
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .toc-list a {
+      display: grid;
+      grid-template-columns: 32px 1fr auto;
+      gap: 16px;
+      padding: 14px 16px 14px 0;
+      align-items: baseline;
+      transition: background 0.2s;
+    }
+
+    .toc-list a:hover {
+      background: var(--paper-deep);
+    }
+
+    .toc-num {
+      font-family: "Noto Serif SC", serif;
+      font-size: 20px;
+      color: var(--ink-mute);
+      line-height: 1;
+    }
+
+    .toc-name {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 17px;
+      color: var(--ink);
+    }
+
+    .toc-time {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ---------- Statement / Pullquote ---------- */
+    .statement {
+      margin: 0 0 72px;
+      max-width: 980px;
+    }
+
+    .statement-label {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 24px;
+      display: block;
+    }
+
+    .statement-text {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: clamp(28px, 3.6vw, 44px);
+      line-height: 1.3;
+      color: var(--ink);
+      font-weight: 500;
+      margin: 0 0 36px;
+      letter-spacing: -0.01em;
+      position: relative;
+      padding-left: 28px;
+    }
+
+    .statement-text::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.2em;
+      bottom: 0.2em;
+      width: 3px;
+      background: var(--accent);
+    }
+
+    .statement-body {
+      font-size: 17px;
+      line-height: 1.9;
+      color: var(--ink-soft);
+      max-width: 720px;
+    }
+
+    /* Drop cap */
+    .drop-cap::first-letter {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 4.2em;
+      float: left;
+      line-height: 0.92;
+      padding: 0.08em 0.14em 0 0;
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    /* ---------- Question grid (Why) ---------- */
+    .questions {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      border-top: 1px solid var(--ink);
+      border-left: 1px solid var(--ink);
+    }
+
+    .question-cell {
+      padding: 40px 36px;
+      border-right: 1px solid var(--ink);
+      border-bottom: 1px solid var(--ink);
+      background: var(--paper);
+    }
+
+    .question-num {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 20px;
+      display: block;
+    }
+
+    .question-title {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 24px;
+      line-height: 1.3;
+      margin: 0 0 14px;
+      font-weight: 500;
+    }
+
+    .question-body {
+      font-size: 15px;
+      line-height: 1.75;
+      color: var(--ink-soft);
+      margin: 0;
+    }
+
+    /* ---------- Loop (5 steps) ---------- */
+    .loop {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      border-top: 1px solid var(--ink);
+      border-bottom: 1px solid var(--ink);
+      margin-bottom: 40px;
+    }
+
+    .loop-step {
+      padding: 40px 28px 36px;
+      border-right: 1px solid var(--rule);
+      position: relative;
+      background: var(--paper);
+    }
+
+    .loop-step:last-child { border-right: none; }
+
+    .loop-num {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 48px;
+      line-height: 1;
+      color: var(--ink);
+      font-weight: 400;
+      margin-bottom: 20px;
+      display: block;
+    }
+
+    .loop-title {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 22px;
+      line-height: 1.2;
+      margin: 0 0 12px;
+      font-weight: 500;
+    }
+
+    .loop-body {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--ink-soft);
+      margin: 0;
+    }
+
+    .loop-summary {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 22px;
+      line-height: 1.5;
+      color: var(--ink);
+      font-style: italic;
+      text-align: center;
+      padding: 24px 32px;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    .loop-summary::before { content: "「"; color: var(--accent); margin-right: 4px; }
+    .loop-summary::after { content: "」"; color: var(--accent); margin-left: 4px; }
+
+    /* ---------- Definition (What) ---------- */
+    .definition {
+      display: grid;
+      grid-template-columns: 1fr 1.1fr;
+      gap: 64px;
+      align-items: start;
+    }
+
+    .definition-panel {
+      padding: 36px 0;
+      border-top: 1px solid var(--ink);
+      border-bottom: 1px solid var(--ink);
+    }
+
+    .definition-label {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 28px;
+      display: block;
+    }
+
+    .definition-headline {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 32px;
+      line-height: 1.3;
+      font-weight: 500;
+      margin: 0 0 24px;
+    }
+
+    .definition-body {
+      font-size: 16px;
+      line-height: 1.85;
+      color: var(--ink-soft);
+    }
+
+    .definition-body strong {
+      color: var(--ink);
+      font-weight: 600;
+      background: linear-gradient(transparent 64%, var(--highlight) 64%);
+      padding: 0 2px;
+    }
+
+    .layer-stack {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .layer-card {
+      padding: 28px 0;
+      border-bottom: 1px solid var(--rule);
+      display: grid;
+      grid-template-columns: 100px 1fr;
+      gap: 28px;
+    }
+
+    .layer-card:first-child { border-top: 1px solid var(--rule); }
+
+    .layer-num {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 36px;
+      line-height: 1;
+      color: var(--ink);
+      font-weight: 400;
+    }
+
+    .layer-label {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 10px;
+    }
+
+    .layer-title {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 24px;
+      line-height: 1.25;
+      margin: 0 0 12px;
+      font-weight: 500;
+    }
+
+    .layer-body {
+      font-size: 15px;
+      line-height: 1.75;
+      color: var(--ink-soft);
+      margin: 0;
+    }
+
+    /* ---------- Core grid (4 cells 2x2) ---------- */
+    .core-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      border-top: 1px solid var(--ink);
+      border-left: 1px solid var(--ink);
+      margin-bottom: 32px;
+    }
+
+    .core-cell {
+      padding: 40px 36px;
+      border-right: 1px solid var(--ink);
+      border-bottom: 1px solid var(--ink);
+      background: var(--paper);
+    }
+
+    .core-num {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 64px;
+      line-height: 1;
+      color: var(--ink);
+      font-weight: 400;
+      display: block;
+      margin-bottom: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    .core-title {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 30px;
+      line-height: 1.2;
+      margin: 0 0 16px;
+      font-weight: 500;
+    }
+
+    .core-body {
+      font-size: 15px;
+      line-height: 1.8;
+      color: var(--ink-soft);
+      margin: 0 0 20px;
+    }
+
+    .core-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 12px;
+      line-height: 2;
+      color: var(--ink-soft);
+    }
+
+    .core-list li {
+      padding-left: 18px;
+      position: relative;
+    }
+
+    .core-list li::before {
+      content: "→";
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+    }
+
+    /* ---------- Photo / Visual frame ---------- */
+    .photo {
+      margin: 0 0 24px;
+      border: 1px solid var(--ink);
+      background: var(--paper);
+    }
+
+    .photo img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .photo-caption {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-style: italic;
+      font-size: 14px;
+      color: var(--ink-mute);
+      padding: 14px 20px;
+      border-top: 1px solid var(--rule);
+      line-height: 1.5;
+    }
+
+    .photo-caption strong {
+      font-style: normal;
+      font-weight: 600;
+      color: var(--accent);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      margin-right: 12px;
+    }
+
+    /* ---------- Points grid (7 columns) ---------- */
+    .points {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      border-top: 1px solid var(--ink);
+      border-bottom: 1px solid var(--ink);
+      margin-bottom: 0;
+    }
+
+    .point-cell {
+      padding: 32px 18px 28px;
+      border-right: 1px solid var(--rule);
+    }
+
+    .point-cell:last-child { border-right: none; }
+
+    .point-num {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 38px;
+      line-height: 1;
+      color: var(--ink);
+      font-weight: 400;
+      display: block;
+      margin-bottom: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    .point-title {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 17px;
+      line-height: 1.3;
+      margin: 0 0 12px;
+      font-weight: 500;
+    }
+
+    .point-body {
+      font-size: 12.5px;
+      line-height: 1.65;
+      color: var(--ink-soft);
+      margin: 0;
+    }
+
+    /* ---------- How it Works (10 steps) ---------- */
+    .how {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      border-top: 1px solid var(--ink);
+      border-left: 1px solid var(--rule);
+    }
+
+    .how-cell {
+      padding: 32px 32px 30px;
+      border-right: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+      display: grid;
+      grid-template-columns: 64px 1fr;
+      gap: 20px;
+      background: var(--paper);
+    }
+
+    .how-num {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 36px;
+      line-height: 1;
+      color: var(--accent);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+    }
+
+    .how-title {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 19px;
+      line-height: 1.3;
+      margin: 0 0 8px;
+      font-weight: 500;
+    }
+
+    .how-body {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--ink-soft);
+      margin: 0;
+    }
+
+    /* ---------- Flow / Evidence ---------- */
+    .flow-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 80px;
+      border-top: 1px solid var(--ink);
+      padding-top: 48px;
+    }
+
+    .flow-col-label {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 24px;
+      display: block;
+    }
+
+    .pipeline {
+      border-top: 1px solid var(--rule);
+    }
+
+    .pipe-row {
+      display: grid;
+      grid-template-columns: 130px 1fr;
+      gap: 24px;
+      padding: 20px 0;
+      border-bottom: 1px solid var(--rule);
+      align-items: baseline;
+    }
+
+    .pipe-stage {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 13px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    .pipe-desc {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 18px;
+      line-height: 1.4;
+      color: var(--ink);
+    }
+
+    .evidence {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-top: 1px solid var(--rule);
+    }
+
+    .evidence-item {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--rule);
+      border-right: 1px solid var(--rule);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 13px;
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .evidence-item::before {
+      content: "▢";
+      color: var(--accent);
+      font-size: 11px;
+      line-height: 1;
+    }
+
+    .evidence-item:nth-child(2n) { border-right: none; }
+
+    /* ---------- Story (3 future cards) ---------- */
+    .story {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0;
+      border-top: 1px solid var(--ink);
+    }
+
+    .story-card {
+      padding: 40px 32px 36px;
+      border-right: 1px solid var(--rule);
+      background: var(--paper);
+    }
+
+    .story-card:last-child { border-right: none; }
+
+    .story-label {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 20px;
+      display: block;
+    }
+
+    .story-title {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 28px;
+      line-height: 1.25;
+      margin: 0 0 16px;
+      font-weight: 500;
+    }
+
+    .story-body {
+      font-size: 15px;
+      line-height: 1.8;
+      color: var(--ink-soft);
+      margin: 0;
+    }
+
+    /* ---------- Colophon ---------- */
+    .colophon {
+      padding: 120px 0 80px;
+      border-top: 2px solid var(--ink);
+      background: var(--paper-deep);
+    }
+
+    .colophon-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 32px;
+    }
+
+    .colophon-kicker {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 32px;
+      display: block;
+    }
+
+    .colophon-title {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: clamp(36px, 5.2vw, 68px);
+      line-height: 1.18;
+      margin: 0 0 36px;
+      max-width: 980px;
+      font-weight: 500;
+      letter-spacing: -0.015em;
+    }
+
+    .colophon-body {
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      font-size: 22px;
+      line-height: 1.6;
+      color: var(--ink-soft);
+      max-width: 760px;
+      margin: 0 0 72px;
+    }
+
+    .colophon-meta {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 32px;
+      padding-top: 32px;
+      border-top: 1px solid var(--rule);
+    }
+
+    .colophon-meta > div {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .colophon-meta strong {
+      display: block;
+      font-size: 16px;
+      letter-spacing: 0;
+      text-transform: none;
+      color: var(--ink);
+      font-weight: 500;
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      margin-bottom: 6px;
+    }
+
+    /* ---------- Responsive ---------- */
+    @media (max-width: 1040px) {
+      .chapter-header { grid-template-columns: 100px 1fr; gap: 40px; }
+      .chapter-num { font-size: 84px; }
+      .definition { grid-template-columns: 1fr; gap: 48px; }
+      .flow-grid { grid-template-columns: 1fr; gap: 56px; }
+      .story { grid-template-columns: 1fr; }
+      .story-card { border-right: none; border-bottom: 1px solid var(--rule); }
+      .points { grid-template-columns: repeat(4, 1fr); }
+      .point-cell { border-bottom: 1px solid var(--rule); }
+      .point-cell:nth-child(4n) { border-right: none; }
+      .point-cell:nth-child(n+5) { border-bottom: none; }
+      .loop { grid-template-columns: repeat(3, 1fr); }
+      .loop-step { border-bottom: 1px solid var(--rule); }
+      .loop-step:nth-child(3n) { border-right: none; }
+      .loop-step:nth-child(n+4) { border-bottom: none; }
+      .toc-inner { grid-template-columns: 1fr; gap: 32px; }
+      .cover-byline { grid-template-columns: repeat(2, 1fr); gap: 24px; }
+    }
+
+    @media (max-width: 720px) {
+      body { font-size: 16px; }
+      .masthead-inner { font-size: 10px; gap: 12px; }
+      .masthead-nav { display: none; }
+      .cover { min-height: 80vh; padding: 60px 0 48px; }
+      .cover-deck { font-size: 19px; margin-bottom: 56px; }
+      .section { padding: 80px 0; }
+      .section + .section { padding-top: 64px; }
+      .section-inner { padding: 0 20px; }
+      .chapter-header { grid-template-columns: 1fr; gap: 16px; margin-bottom: 48px; }
+      .chapter-num { font-size: 64px; }
+      .questions { grid-template-columns: 1fr; }
+      .question-cell { padding: 28px 24px; }
+      .core-grid { grid-template-columns: 1fr; }
+      .core-cell { padding: 32px 24px; }
+      .points { grid-template-columns: repeat(2, 1fr); }
+      .point-cell { padding: 24px 16px 22px; }
+      .point-cell:nth-child(2n) { border-right: none; }
+      .point-cell:nth-child(n+7) { border-bottom: none; }
+      .loop { grid-template-columns: 1fr; }
+      .loop-step { padding: 28px 24px; border-right: none !important; border-bottom: 1px solid var(--rule); }
+      .loop-step:last-child { border-bottom: none; }
+      .how { grid-template-columns: 1fr; }
+      .how-cell { padding: 24px 20px; }
+      .evidence { grid-template-columns: 1fr; }
+      .evidence-item { border-right: none !important; }
+      .pipe-row { grid-template-columns: 1fr; gap: 4px; }
+      .colophon { padding: 80px 0 64px; }
+      .colophon-meta { grid-template-columns: repeat(2, 1fr); gap: 24px; }
+      .cover-byline { grid-template-columns: 1fr 1fr; gap: 20px; }
+      .toc-list { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="masthead">
+    <div class="masthead-inner">
+      <div class="masthead-brand">HARNESS<span>·</span>企业 AI 研发方法论</div>
+      <nav class="masthead-nav" aria-label="目录导航">
+        <a href="#why">Why</a>
+        <a href="#loop">Loop</a>
+        <a href="#what">What</a>
+        <a href="#core">核心能力</a>
+        <a href="#points">设计要点</a>
+        <a href="#how">How</a>
+      </nav>
+    </div>
+  </header>
+
+  <section class="cover">
+    <div class="cover-inner">
+      <div class="cover-kicker">VOL. 01 / 2026.06 / 编辑特刊</div>
+      <h1 class="cover-title">AI 很强，但企业研发<br>不能让<em>模型裸奔</em>。</h1>
+      <p class="cover-deck">Harness 给 AI 方向、边界、工具、反馈和纠偏机制，让需求开发从不确定的模型输出，变成可检查、可复用、可推广的工程过程。</p>
+      <div class="cover-byline">
+        <div><strong>专题</strong>企业级 AI 研发护栏</div>
+        <div><strong>章节</strong>8 章 · 约 12 分钟</div>
+        <div><strong>出品</strong>Harness 研究组</div>
+        <div><strong>日期</strong>2026 / 06</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="toc" aria-label="目录">
+    <div class="toc-inner">
+      <div class="toc-label">目录 · CONTENTS</div>
+      <ol class="toc-list">
+        <li><a href="#why"><span class="toc-num">Ⅰ</span><span class="toc-name">问题与动机</span><span class="toc-time">2 min</span></a></li>
+        <li><a href="#loop"><span class="toc-num">Ⅱ</span><span class="toc-name">Harness 循环</span><span class="toc-time">2 min</span></a></li>
+        <li><a href="#what"><span class="toc-num">Ⅲ</span><span class="toc-name">什么是 Harness</span><span class="toc-time">2 min</span></a></li>
+        <li><a href="#core"><span class="toc-num">Ⅳ</span><span class="toc-name">四大核心能力</span><span class="toc-time">2 min</span></a></li>
+        <li><a href="#points"><span class="toc-num">Ⅴ</span><span class="toc-name">七个设计要点</span><span class="toc-time">1 min</span></a></li>
+        <li><a href="#how"><span class="toc-num">Ⅵ</span><span class="toc-name">如何运转</span><span class="toc-time">2 min</span></a></li>
+        <li><a href="#process"><span class="toc-num">Ⅶ</span><span class="toc-name">阶段与证据</span><span class="toc-time">1 min</span></a></li>
+        <li><a href="#future"><span class="toc-num">Ⅷ</span><span class="toc-name">未来的能力</span><span class="toc-time">1 min</span></a></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="section" id="why">
+    <div class="section-inner">
+      <header class="chapter-header">
+        <div class="chapter-num">Ⅰ</div>
+        <div class="chapter-meta">
+          <span class="chapter-kicker">CHAPTER 01 / WHY HARNESS</span>
+          <h2 class="chapter-title">问题不是 AI 不够强，而是没有护栏。</h2>
+          <p class="chapter-deck">把 AI 用在企业研发里，速度并不稀缺，稀缺的是把速度控制成结果。</p>
+        </div>
+      </header>
+
+      <div class="statement">
+        <span class="statement-label">导言 · EDITOR'S NOTE</span>
+        <p class="statement-text">日常开发需求不能交给不确定的模型独立处理。</p>
+        <p class="statement-body drop-cap">大模型像一匹跑得很快的马，速度很强，但企业研发不能只是给一句提示词就放它向前冲。代码任务里有需求理解、架构边界、接口契约、测试验证、评审验收和失败修正，任何一环失控都会把局部效率变成整体返工。</p>
+      </div>
+
+      <div class="questions">
+        <article class="question-cell">
+          <span class="question-num">QUESTION 01</span>
+          <h3 class="question-title">AI 从哪里理解需求？</h3>
+          <p class="question-body">需求需要先变成可交接文档，包含开发意图、范围边界、输入输出、业务流程和验收标准。</p>
+        </article>
+        <article class="question-cell">
+          <span class="question-num">QUESTION 02</span>
+          <h3 class="question-title">AI 依据什么规则做判断？</h3>
+          <p class="question-body">项目规范、接口契约、测试规则和架构边界需要进入长期文档，而不是临时聊天补充。</p>
+        </article>
+        <article class="question-cell">
+          <span class="question-num">QUESTION 03</span>
+          <h3 class="question-title">AI 能否自己查项目规范？</h3>
+          <p class="question-body">项目知识应当前置生成，让 AI 主动读取规范和接口文档，减少反复询问研发人员。</p>
+        </article>
+        <article class="question-cell">
+          <span class="question-num">QUESTION 04</span>
+          <h3 class="question-title">AI 写完以后谁验证？</h3>
+          <p class="question-body">实现者和验证者需要隔离，测试、架构、范围和质量检查共同判断交付是否成立。</p>
+        </article>
+        <article class="question-cell">
+          <span class="question-num">QUESTION 05</span>
+          <h3 class="question-title">验证失败以后如何修正？</h3>
+          <p class="question-body">失败结果要回到阶段状态和证据文件，重新进入正确阶段，而不是继续扩大修改范围。</p>
+        </article>
+        <article class="question-cell">
+          <span class="question-num">QUESTION 06</span>
+          <h3 class="question-title">这次问题下次如何避免？</h3>
+          <p class="question-body">问题、判断依据和修正方式需要进入项目知识或规范，成为下一次任务的前置上下文。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="loop">
+    <div class="section-inner">
+      <header class="chapter-header">
+        <div class="chapter-num">Ⅱ</div>
+        <div class="chapter-meta">
+          <span class="chapter-kicker">CHAPTER 02 / HARNESS LOOP</span>
+          <h2 class="chapter-title">关键不是让 AI 干活，而是给 AI 搭循环。</h2>
+          <p class="chapter-deck">前置、执行、反馈、经验、复用，这五个环节让 AI 从一次性输出进入持续变好的工程系统。</p>
+        </div>
+      </header>
+
+      <div class="loop">
+        <article class="loop-step">
+          <span class="loop-num">01</span>
+          <h3 class="loop-title">前置</h3>
+          <p class="loop-body">把需求、项目规范、接口契约和历史经验放到 AI 开始工作之前。</p>
+        </article>
+        <article class="loop-step">
+          <span class="loop-num">02</span>
+          <h3 class="loop-title">执行</h3>
+          <p class="loop-body">AI 按阶段、角色和任务范围完成设计、测试、实现和评审。</p>
+        </article>
+        <article class="loop-step">
+          <span class="loop-num">03</span>
+          <h3 class="loop-title">反馈</h3>
+          <p class="loop-body">测试失败、验证失败、架构问题和人工意见进入明确的证据文件。</p>
+        </article>
+        <article class="loop-step">
+          <span class="loop-num">04</span>
+          <h3 class="loop-title">经验</h3>
+          <p class="loop-body">把已经出现的问题转成规则、约束、检查项或项目知识文档。</p>
+        </article>
+        <article class="loop-step">
+          <span class="loop-num">05</span>
+          <h3 class="loop-title">复用</h3>
+          <p class="loop-body">下一次需求开始前自动读取这些规则，让相同问题减少重复出现。</p>
+        </article>
+      </div>
+      <p class="loop-summary">Harness 的目标不是限制 AI，而是让 AI 的能力更稳定、更可控、更可复用。</p>
+    </div>
+  </section>
+
+  <section class="section" id="what">
+    <div class="section-inner">
+      <header class="chapter-header">
+        <div class="chapter-num">Ⅲ</div>
+        <div class="chapter-meta">
+          <span class="chapter-kicker">CHAPTER 03 / WHAT IS HARNESS</span>
+          <h2 class="chapter-title">Harness 是 AI Coding Agent 的工程护栏。</h2>
+          <p class="chapter-deck">不是提示词，也不是单个 skill，而是一套围绕 AI 研发过程搭建的工程系统。</p>
+        </div>
+      </header>
+
+      <div class="definition">
+        <div class="definition-panel">
+          <span class="definition-label">DEFINITION</span>
+          <h3 class="definition-headline">Harness 不是一个提示词，也不是单个 skill。</h3>
+          <p class="definition-body">它是一套围绕 AI 研发过程搭建的工程系统：任务怎么定义，过程怎么执行，结果怎么评估，经验怎么积累，下次怎么复用。</p>
+          <p class="definition-body"><strong>需求先由人类想清楚，执行交给 AI，结果必须被 Harness 验证。</strong></p>
+        </div>
+
+        <div class="layer-stack">
+          <article class="layer-card">
+            <div class="layer-num">一</div>
+            <div>
+              <span class="layer-label">LAYER 01</span>
+              <h3 class="layer-title">人类需求层</h3>
+              <p class="layer-body">解决「到底想要什么」。需求文档必须写清为什么做、做什么、不做什么、输入输出、业务流程和验收标准。</p>
+            </div>
+          </article>
+          <article class="layer-card">
+            <div class="layer-num">二</div>
+            <div>
+              <span class="layer-label">LAYER 02</span>
+              <h3 class="layer-title">工程契约层</h3>
+              <p class="layer-body">把业务语言翻译成工程语言，形成技术计划、接口契约、任务拆分、修改范围和测试契约。人类必须 review 这份工程合同。</p>
+            </div>
+          </article>
+          <article class="layer-card">
+            <div class="layer-num">三</div>
+            <div>
+              <span class="layer-label">LAYER 03</span>
+              <h3 class="layer-title">代码执行层</h3>
+              <p class="layer-body">只有前两层一致以后，AI 才进入实现。规划、实现、评估职责拆开，避免同一个 AI 自己写、自己测、自己通过。</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="core">
+    <div class="section-inner">
+      <header class="chapter-header">
+        <div class="chapter-num">Ⅳ</div>
+        <div class="chapter-meta">
+          <span class="chapter-kicker">CHAPTER 04 / CORE STRENGTHS</span>
+          <h2 class="chapter-title">阶段可控、证据可查、质量可验、知识可复用。</h2>
+          <p class="chapter-deck">四项能力合在一起，构成 Harness 的企业级研发过程基础。</p>
+        </div>
+      </header>
+
+      <figure class="photo">
+        <img src="核心能力.png" alt="Harness 核心能力信息图">
+        <figcaption class="photo-caption"><strong>FIG. 01</strong>Harness 四大核心能力总览 · 阶段可控 · 证据可查 · 质量可验 · 项目知识可复用</figcaption>
+      </figure>
+
+      <div class="core-grid">
+        <article class="core-cell">
+          <span class="core-num">01</span>
+          <h3 class="core-title">阶段可控</h3>
+          <p class="core-body">需求开发固定经过 clarify → doc-plan → red → green → review → validate → done。</p>
+          <ul class="core-list">
+            <li>状态写入 task.json</li>
+            <li>推进通过 task.py advance</li>
+            <li>单次需求独立成任务包</li>
+          </ul>
+        </article>
+        <article class="core-cell">
+          <span class="core-num">02</span>
+          <h3 class="core-title">证据可查</h3>
+          <p class="core-body">关键判断和执行结果都进入文件，减少只依赖对话记录的不可追溯问题。</p>
+          <ul class="core-list">
+            <li>需求确认有快照</li>
+            <li>测试和评审有结果文件</li>
+            <li>验证报告可复核</li>
+          </ul>
+        </article>
+        <article class="core-cell">
+          <span class="core-num">03</span>
+          <h3 class="core-title">质量可验</h3>
+          <p class="core-body">质量判断交给脚本、测试和范围检查，降低 AI 自述完成带来的不确定性。</p>
+          <ul class="core-list">
+            <li>lint / type / test / coverage</li>
+            <li>scope.json 控制变更范围</li>
+            <li>verify.py all 汇总验证</li>
+          </ul>
+        </article>
+        <article class="core-cell">
+          <span class="core-num">04</span>
+          <h3 class="core-title">知识可复用</h3>
+          <p class="core-body">项目画像、接口文档和工程规范先进入 docs/standards/，后续任务持续复用。</p>
+          <ul class="core-list">
+            <li>项目开发指南</li>
+            <li>接口索引和详情</li>
+            <li>审阅状态与内容哈希</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="points">
+    <div class="section-inner">
+      <header class="chapter-header">
+        <div class="chapter-num">Ⅴ</div>
+        <div class="chapter-meta">
+          <span class="chapter-kicker">CHAPTER 05 / DESIGN POINTS</span>
+          <h2 class="chapter-title">七个设计要点，把流程变成可执行机制。</h2>
+          <p class="chapter-deck">Harness 的设计不是增加一个流程说明，而是把状态、产物、角色、测试、范围、知识和安装全部变成可执行机制。</p>
+        </div>
+      </header>
+
+      <figure class="photo">
+        <img src="核心知识点.png" alt="Harness 设计要点信息图">
+        <figcaption class="photo-caption"><strong>FIG. 02</strong>Harness 七个设计要点全貌 · 状态管理 / 阶段产物 / 角色拆分 / 测试先行 / 范围受控 / 知识前置 / 安装即接入</figcaption>
+      </figure>
+
+      <div class="points">
+        <article class="point-cell">
+          <span class="point-num">01</span>
+          <h3 class="point-title">脚本管理状态</h3>
+          <p class="point-body">状态变化由脚本完成，AI 负责执行，脚本负责记录和校验。</p>
+        </article>
+        <article class="point-cell">
+          <span class="point-num">02</span>
+          <h3 class="point-title">阶段产物标准化</h3>
+          <p class="point-body">每个阶段都有固定产物，让 review 和自动化具备稳定输入。</p>
+        </article>
+        <article class="point-cell">
+          <span class="point-num">03</span>
+          <h3 class="point-title">角色职责拆分</h3>
+          <p class="point-body">architect、developer、tester 分工明确，减少混合职责。</p>
+        </article>
+        <article class="point-cell">
+          <span class="point-num">04</span>
+          <h3 class="point-title">测试先行</h3>
+          <p class="point-body">RED 先失败，GREEN 再实现，验证结果进入证据文件。</p>
+        </article>
+        <article class="point-cell">
+          <span class="point-num">05</span>
+          <h3 class="point-title">范围受控</h3>
+          <p class="point-body">scope.json 描述允许范围，避免需求实现扩散到无关模块。</p>
+        </article>
+        <article class="point-cell">
+          <span class="point-num">06</span>
+          <h3 class="point-title">项目知识前置</h3>
+          <p class="point-body">项目说明和接口文档先形成知识基线，后续任务持续复用。</p>
+        </article>
+        <article class="point-cell">
+          <span class="point-num">07</span>
+          <h3 class="point-title">安装即接入</h3>
+          <p class="point-body">脚本、hooks、skills 和目录结构一次安装，进入项目即可使用。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="how">
+    <div class="section-inner">
+      <header class="chapter-header">
+        <div class="chapter-num">Ⅵ</div>
+        <div class="chapter-meta">
+          <span class="chapter-kicker">CHAPTER 06 / HOW IT WORKS</span>
+          <h2 class="chapter-title">企业级 Harness 的完整运转过程。</h2>
+          <p class="chapter-deck">从人类评审需求开始，到 AI 编码、脚本检查、测试 Agent 验收、架构 Agent 验收，再回到人类确认。</p>
+        </div>
+      </header>
+
+      <div class="how">
+        <article class="how-cell">
+          <span class="how-num">01</span>
+          <div>
+            <h3 class="how-title">团队先评审需求文档</h3>
+            <p class="how-body">复杂需求先在团队内部形成一致理解，避免 AI 从含混描述开始工作。</p>
+          </div>
+        </article>
+        <article class="how-cell">
+          <span class="how-num">02</span>
+          <div>
+            <h3 class="how-title">把评审后的文档交给 AI</h3>
+            <p class="how-body">需求文档成为本次开发的原始输入，AI 只能基于这份材料继续推进。</p>
+          </div>
+        </article>
+        <article class="how-cell">
+          <span class="how-num">03</span>
+          <div>
+            <h3 class="how-title">AI 读取项目规范审核需求</h3>
+            <p class="how-body">AI 基于项目知识、架构规范和接口文档检查需求是否缺失关键约束。</p>
+          </div>
+        </article>
+        <article class="how-cell">
+          <span class="how-num">04</span>
+          <div>
+            <h3 class="how-title">人类批准后生成工程契约</h3>
+            <p class="how-body">AI 把需求翻译成技术计划、接口契约、测试契约和变更范围。</p>
+          </div>
+        </article>
+        <article class="how-cell">
+          <span class="how-num">05</span>
+          <div>
+            <h3 class="how-title">人类审核工程契约</h3>
+            <p class="how-body">负责人检查工程文档是否符合原始需求，确认后才允许进入编码。</p>
+          </div>
+        </article>
+        <article class="how-cell">
+          <span class="how-num">06</span>
+          <div>
+            <h3 class="how-title">AI 按 Spec 编码并自检</h3>
+            <p class="how-body">实现完成后调用 Harness Check，执行测试、覆盖率、静态扫描和范围检查。</p>
+          </div>
+        </article>
+        <article class="how-cell">
+          <span class="how-num">07</span>
+          <div>
+            <h3 class="how-title">检查失败则打回修正</h3>
+            <p class="how-body">验证失败回到对应阶段修复，通过后再进入测试 Agent 和架构 Agent 验收。</p>
+          </div>
+        </article>
+        <article class="how-cell">
+          <span class="how-num">08</span>
+          <div>
+            <h3 class="how-title">测试 Agent 验收需求</h3>
+            <p class="how-body">测试角色基于工程契约检查代码是否满足验收标准和关键边界场景。</p>
+          </div>
+        </article>
+        <article class="how-cell">
+          <span class="how-num">09</span>
+          <div>
+            <h3 class="how-title">架构 Agent 审查边界</h3>
+            <p class="how-body">架构角色检查错误码、跨包调用、模块边界和项目规范是否被破坏。</p>
+          </div>
+        </article>
+        <article class="how-cell">
+          <span class="how-num">10</span>
+          <div>
+            <h3 class="how-title">双角色通过后交给人类确认</h3>
+            <p class="how-body">测试与架构验收都通过后，向负责人呈现结果；失败则回到修正过程。</p>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="process">
+    <div class="section-inner">
+      <header class="chapter-header">
+        <div class="chapter-num">Ⅶ</div>
+        <div class="chapter-meta">
+          <span class="chapter-kicker">CHAPTER 07 / PROCESS &amp; EVIDENCE</span>
+          <h2 class="chapter-title">让每一步都能被检查。</h2>
+          <p class="chapter-deck">Harness 的重点不是口头承诺，而是文件、命令和退出码共同组成的证据体系。</p>
+        </div>
+      </header>
+
+      <div class="flow-grid">
+        <div>
+          <span class="flow-col-label">PIPELINE / 阶段推进</span>
+          <div class="pipeline">
+            <div class="pipe-row"><span class="pipe-stage">clarify</span><span class="pipe-desc">确认开发意图、验收标准和范围边界</span></div>
+            <div class="pipe-row"><span class="pipe-stage">doc-plan</span><span class="pipe-desc">形成技术计划、修改范围和测试契约</span></div>
+            <div class="pipe-row"><span class="pipe-stage">red</span><span class="pipe-desc">先写预期失败测试，锁定行为契约</span></div>
+            <div class="pipe-row"><span class="pipe-stage">green</span><span class="pipe-desc">在测试约束下完成最小实现</span></div>
+            <div class="pipe-row"><span class="pipe-stage">review</span><span class="pipe-desc">检查设计符合性、命名和边界</span></div>
+            <div class="pipe-row"><span class="pipe-stage">validate</span><span class="pipe-desc">补充验证并执行统一质量检查</span></div>
+          </div>
+        </div>
+
+        <div>
+          <span class="flow-col-label">EVIDENCE / 关键证据文件</span>
+          <div class="evidence">
+            <div class="evidence-item">clarification.md</div>
+            <div class="evidence-item">implementation-plan.md</div>
+            <div class="evidence-item">scope.json</div>
+            <div class="evidence-item">test-result.red.json</div>
+            <div class="evidence-item">test-result.green.json</div>
+            <div class="evidence-item">review-result.json</div>
+            <div class="evidence-item">verify-result.json</div>
+            <div class="evidence-item">project-profile.json</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="future">
+    <div class="section-inner">
+      <header class="chapter-header">
+        <div class="chapter-num">Ⅷ</div>
+        <div class="chapter-meta">
+          <span class="chapter-kicker">CHAPTER 08 / FUTURE CAPABILITY</span>
+          <h2 class="chapter-title">AI Coding 后半场，拼的是过程管理能力。</h2>
+          <p class="chapter-deck">未来企业级 Coding 会越来越简单，并不是因为代码简单了，而是复杂执行过程会被压进更清晰的工程流水线里。</p>
+        </div>
+      </header>
+
+      <div class="story">
+        <article class="story-card">
+          <span class="story-label">CAPABILITY 01</span>
+          <h3 class="story-title">把模糊想法变成清晰需求</h3>
+          <p class="story-body">真正重要的不是马上让 AI 写代码，而是先把方向、边界、输入输出和验收标准讲清楚。</p>
+        </article>
+        <article class="story-card">
+          <span class="story-label">CAPABILITY 02</span>
+          <h3 class="story-title">把需求变成工程契约</h3>
+          <p class="story-body">业务语言需要翻译成模块、接口、错误码、测试契约和修改范围，负责人 review 后才进入实现。</p>
+        </article>
+        <article class="story-card">
+          <span class="story-label">CAPABILITY 03</span>
+          <h3 class="story-title">设计反馈系统</h3>
+          <p class="story-body">AI 犯错以后，错误需要变成证据、规则和项目知识，让下一次任务从更好的前置条件开始。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="colophon">
+    <div class="colophon-inner">
+      <span class="colophon-kicker">COLOPHON · 刊末</span>
+      <h2 class="colophon-title">AI 写代码只是起点，企业真正需要的是可管理、可验证、可复用的 AI 研发过程。</h2>
+      <p class="colophon-body">Harness 提供阶段、角色、证据、项目知识和质量检查。人类负责方向和裁决，AI 负责执行，脚本和证据负责验证。</p>
+      <div class="colophon-meta">
+        <div><strong>专题</strong>企业 AI 研发护栏</div>
+        <div><strong>出品</strong>Harness 研究组</div>
+        <div><strong>刊期</strong>2026 / 06 · 第 01 期</div>
+        <div><strong>字数</strong>约 2,400 字 · 阅读 12 分钟</div>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

@@ -110,12 +110,27 @@ clarify -> doc-plan -> red -> green -> review -> validate -> done -> archived
 ## 影响范围
 ## 技术方案
 ## 可测试契约
+## 业务契约覆盖
 ## Slice 顺序
 ## 验证方式
 ## 已知限制
 ```
 
 需求原文、长背景和讨论记录保存在需求来源文件与 `clarification.jsonl` 中。
+
+## 业务契约
+
+业务契约用于把日常业务需求中的细节转成可测试、可审查的记录。每条契约描述一个业务场景，包含输入条件、预期行为、可观测信息和测试要求。
+
+业务契约在各阶段的使用方式如下：
+
+| 阶段 | 契约要求 |
+| --- | --- |
+| `clarify` | `clarification.jsonl` 可记录 `businessContracts` |
+| `doc-plan` | `implementation-plan.md` 必须包含 `业务契约覆盖` |
+| `red` | `test-result.red.json` 通过 `contractCoverage` 记录测试映射 |
+| `green` | `test-result.green.json` 继续记录契约验证结果 |
+| `review` | `review-result.json` 通过 `businessContractCoverage` 记录审查结果 |
 
 ## 三个角色
 

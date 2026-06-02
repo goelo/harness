@@ -1,0 +1,92 @@
+{
+  "id": "business-contracts",
+  "title": "增加通用业务契约机制",
+  "description": "",
+  "status": "done",
+  "phase": "done",
+  "originIntent": "requirement-confirmation",
+  "executionMode": "agent-team",
+  "executionModeFallbackReason": null,
+  "priority": "P2",
+  "creator": "didi",
+  "assignee": "didi",
+  "createdAt": "2026-06-02",
+  "completedAt": null,
+  "branch": null,
+  "sourceDoc": "inline-request",
+  "sourceDocHash": "sha256:192dc47569825d7fd8b2f52422236cf694008e7a5d3bc68533b21ad81a3aceda",
+  "phaseHistory": [
+    {
+      "event": "advanced",
+      "from": "clarify",
+      "to": "doc-plan",
+      "at": "2026-06-02T08:10:45.308197+00:00",
+      "evidence": [
+        "docs/tasks/06-02-business-contracts/clarification.jsonl"
+      ]
+    },
+    {
+      "event": "advanced",
+      "from": "doc-plan",
+      "to": "red",
+      "at": "2026-06-02T08:11:24.316460+00:00",
+      "evidence": [
+        "docs/tasks/06-02-business-contracts/implementation-plan.md",
+        "docs/tasks/06-02-business-contracts/scope.json",
+        "docs/tasks/06-02-business-contracts/context.architect.jsonl",
+        "docs/tasks/06-02-business-contracts/context.developer.jsonl",
+        "docs/tasks/06-02-business-contracts/context.tester.jsonl"
+      ]
+    },
+    {
+      "event": "advanced",
+      "from": "red",
+      "to": "green",
+      "at": "2026-06-02T08:12:19.537861+00:00",
+      "evidence": [
+        "docs/tasks/06-02-business-contracts/test-result.red.json"
+      ]
+    },
+    {
+      "event": "advanced",
+      "from": "green",
+      "to": "review",
+      "at": "2026-06-02T08:12:19.703745+00:00",
+      "evidence": [
+        "docs/tasks/06-02-business-contracts/test-result.green.json"
+      ]
+    },
+    {
+      "event": "advanced",
+      "from": "review",
+      "to": "validate",
+      "at": "2026-06-02T08:14:22.048780+00:00",
+      "evidence": [
+        "docs/tasks/06-02-business-contracts/review-result.json"
+      ]
+    },
+    {
+      "event": "advance_failed",
+      "phase": "done",
+      "reason": "working tree changed after final verify",
+      "at": "2026-06-02T08:14:59.798503+00:00"
+    },
+    {
+      "event": "advanced",
+      "from": "validate",
+      "to": "done",
+      "at": "2026-06-02T08:15:45.998321+00:00",
+      "evidence": [
+        "docs/tasks/06-02-business-contracts/verify-result.json"
+      ]
+    }
+  ],
+  "phaseAttempts": {
+    "done": {
+      "autoFixCount": 0,
+      "lastError": "working tree changed after final verify",
+      "lastFailedAt": "2026-06-02T08:14:59.798185+00:00"
+    }
+  },
+  "meta": {}
+}

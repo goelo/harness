@@ -1,0 +1,19 @@
+{
+  "success": true,
+  "command": "python3 -m unittest tests.test_task_cli.TestClarifyAndAdvance.test_clarify_confirm_records_business_contracts",
+  "exitCode": 0,
+  "targetTests": [
+    "tests.test_task_cli.TestClarifyAndAdvance.test_clarify_confirm_records_business_contracts"
+  ],
+  "stdout": "",
+  "stderr": ".\n----------------------------------------------------------------------\nRan 1 test in 0.415s\n\nOK\n",
+  "contractCoverage": {
+    "BC-001": [
+      "tests.test_task_cli.TestClarifyAndAdvance.test_clarify_confirm_records_business_contracts"
+    ]
+  },
+  "uncoveredContracts": [],
+  "finishedAt": "2026-06-02T08:11:40.384311+00:00",
+  "generatedBy": "verify.py green",
+  "expectedPassObserved": true
+}

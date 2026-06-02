@@ -787,6 +787,13 @@ import sys
 from pathlib import Path
 
 LOCAL_CONTEXT_KEY = "local"
+PHASE_ROLE = {
+    "doc-plan": "architect",
+    "red": "tester",
+    "green": "developer",
+    "review": "architect",
+    "validate": "tester",
+}
 
 
 def find_project_root(start: Path) -> Path | None:
@@ -875,21 +882,28 @@ def unique_in_progress_task(root: Path) -> dict | None:
 def build_context(task: dict | None) -> str:
     parts = []
     if task:
+        required_role = PHASE_ROLE.get(task["phase"])
+        role_line = f"\\nRequired subagent: {required_role}" if required_role else ""
         parts.append(
             f"Active task: {task['title']} ({task['status']})\n"
             f"Phase: {task['phase']}\n"
             f"Execution mode: {task['executionMode']}\n"
             f"Path: {task['path']}\n"
-            "Required skill: requirement-development\n"
-            "继续当前任务时必须使用需求开发 skill 推进阶段，禁止退回原生直接开发流程。"
+            "Required skill: requirement-development"
+            f"{role_line}\n"
+            "继续当前任务时必须使用需求开发 skill，并通过必选子代理推进阶段。"
         )
     else:
-        parts.append("No active task.")
+        parts.append(
+            "No active task.\n"
+            "Required skill: requirement-confirmation\n"
+            "新需求、实现请求、模块规划和按文档开发请求，都必须先完成需求确认。"
+        )
 
     parts.append(
         "\nNatural language entries:\n"
-        "- 按 design.md 开发\n"
-        "- 继续需求开发\n"
+        "- 按 design.md 开发: use requirement-confirmation first\n"
+        "- 继续需求开发: use requirement-development after confirmed clarification\n"
         "- 查看当前需求开发状态\n"
         "- 归档当前任务"
     )
@@ -941,6 +955,13 @@ import sys
 from pathlib import Path
 
 LOCAL_CONTEXT_KEY = "local"
+PHASE_ROLE = {
+    "doc-plan": "architect",
+    "red": "tester",
+    "green": "developer",
+    "review": "architect",
+    "validate": "tester",
+}
 TAG_RE = re.compile(
     r"\\[workflow-phase:([A-Za-z0-9_-]+)\\]\\s*\\n(.*?)\\n\\s*\\[/workflow-phase:\\1\\]",
     re.DOTALL,
@@ -1035,14 +1056,22 @@ def unique_in_progress_task(root: Path) -> dict | None:
 
 def build_breadcrumb(task: dict | None, body: str) -> str:
     if task:
+        required_role = PHASE_ROLE.get(task["phase"])
+        role_line = f"\\nRequired subagent: {required_role}" if required_role else ""
         header = (
             f"Task: {task['path']} ({task['status']})\n"
             f"Phase: {task['phase']}\n"
-            "Required skill: requirement-development\n"
-            "继续当前任务时必须使用需求开发 skill 推进阶段，禁止退回原生直接开发流程。"
+            "Required skill: requirement-development"
+            f"{role_line}\n"
+            "继续当前任务时必须使用需求开发 skill，并通过必选子代理推进阶段。"
         )
     else:
-        header = "Status: no_task\nPhase: no_task"
+        header = (
+            "Status: no_task\n"
+            "Phase: no_task\n"
+            "Required skill: requirement-confirmation\n"
+            "新需求、实现请求、模块规划和按文档开发请求，都必须先完成需求确认。"
+        )
     return f"<workflow-state>\n{header}\n{body}\n</workflow-state>"
 
 
@@ -1354,7 +1383,7 @@ def phase_edit_violation(root: Path, task_dir: Path | None, phase: str | None, t
     rel = normalize_target_path(root, target)
     if task_dir is None:
         if is_code_path(rel):
-            return f"没有 active task，禁止修改业务代码 {rel}。请先进入 requirement-development 并创建 task。"
+            return f"没有 active task，禁止修改业务代码 {rel}。请先进入 requirement-confirmation 完成需求确认。"
         return None
     if phase == "clarify":
         if is_code_path(rel):
@@ -1423,8 +1452,8 @@ def main() -> int:
 
     if tool_name in ROLE_TOOLS and task_dir is None:
         return emit_block(
-            "没有 active task，禁止启动开发子任务。请先通过 requirement-development 创建 task，"
-            "并使用 python3 .harness/scripts/task.py create \"<任务名>\" 进入 clarify 阶段。"
+            "没有 active task，禁止启动开发子任务。请先使用 requirement-confirmation 完成需求确认，"
+            "确认后再使用 python3 .harness/scripts/task.py create \"<任务名>\" 创建任务。"
         )
 
     role = infer_role(tool_input)
@@ -2240,6 +2269,7 @@ SKILL_REQUIREMENT_CONFIRMATION = """\
 name: requirement-confirmation
 description: |
   需求确认 skill。用于在需求开发前逐项确认开发意图、验收标准、边界条件、依赖关系和未决问题。
+  初始实现请求也必须先使用本 skill，例如 "按 design.md 开发"、"按照需求开发"、"参考 docs 进行业务逻辑开发"、"进行模块规划"。
   触发语包括 "需求确认"、"确认需求"、"grill me"、"先问清楚需求"、"需求还要再确认"。
 ---
 
@@ -2268,11 +2298,14 @@ description: |
 | `developmentIntent` | 开发者理解的开发意图 |
 | `acceptanceCriteria` | 可验证的验收标准 |
 | `boundaries` | 明确的范围边界 |
+| `businessContracts` | 业务契约列表，记录场景、输入、预期行为、可观测信息和测试要求 |
 | `openQuestions` | 必须为空数组 |
 | `confirmed` | 必须为 `true` |
 | `confirmedBy` | 必须为 `collaborator` |
 | `sourceDoc` | 需求来源文件或 `inline-request` |
 | `sourceDocHash` | 需求来源内容哈希 |
+
+业务契约是通用结构，用于让订单、支付、推荐、运营后台等日常需求都能把业务细节转成可测试、可审查的记录。每条契约至少包含 `id`、`scenario` 和 `expectedBehavior`。
 
 `clarification.jsonl` 是阶段推进门禁依据，`clarification.md` 只作为阅读快照。
 """
@@ -2281,8 +2314,8 @@ SKILL_REQUIREMENT_DEVELOPMENT = """\
 ---
 name: requirement-development
 description: |
-  需求开发 skill。用于依据 design.md、spec.md、requirements.md 或协作者的内联需求，在 harness 项目中完成流程化开发。
-  触发语包括 "按 design.md 开发"、"按照需求开发"、"继续需求开发"、"走 harness 流程"、"implement design.md"。
+  需求开发 skill。仅在需求确认完成后使用，用于依据有效 clarification.jsonl 在 harness 项目中推进后续阶段。
+  触发语包括 "继续需求开发"、"查看当前需求开发状态"、"归档当前任务"。
 ---
 
 # 需求开发
@@ -2293,9 +2326,11 @@ description: |
 
 ## 前置要求
 
-进入开发前必须先使用 `requirement-confirmation`。如果当前任务尚未生成有效 `clarification.jsonl` 确认记录，应当自动转入需求确认。
+进入开发前必须先使用 `requirement-confirmation`。如果当前任务尚未生成有效 `clarification.jsonl` 确认记录，必须停止需求开发流程，改用 `requirement-confirmation`。
 
 即使需求文档完整，也至少复述开发意图，确认验收标准和范围边界。
+
+未完成需求确认时，不得创建 task、不得进行模块规划、不得编写 `implementation-plan.md`，也不得调度 `architect`、`developer` 或 `tester`。
 
 ## 阶段顺序
 
@@ -2322,6 +2357,7 @@ description: |
 ## 影响范围
 ## 技术方案
 ## 可测试契约
+## 业务契约覆盖
 ## Slice 顺序
 ## 验证方式
 ## 已知限制
@@ -2329,9 +2365,11 @@ description: |
 
 ## 执行规则
 
-默认使用 `agent-team` 执行模式。每个阶段按需调用对应角色，角色会通过 hook 注入 `docs/standards/index.md`、`clarification.md`、`implementation-plan.md` 和角色自己的 `context.<role>.jsonl`。
+固定使用 `agent-team` 执行模式。每个阶段必须调用对应子代理，角色会通过 hook 注入 `docs/standards/index.md`、`clarification.md`、`implementation-plan.md` 和角色自己的 `context.<role>.jsonl`。
 
-如果当前运行环境没有子代理能力，可以降级为 `single-session`，并在 `task.json.executionModeFallbackReason` 记录原因。
+阶段与必选子代理的对应关系固定为：`doc-plan` 和 `review` 使用 `architect`，`red` 和 `validate` 使用 `tester`，`green` 使用 `developer`。主会话负责阶段协调、验证和提交，不负责代替子代理编写阶段产物或业务代码。
+
+业务契约必须贯穿后续阶段：`red` 和 `green` 证据通过 `contractCoverage` 和 `uncoveredContracts` 记录测试映射；`review-result.json` 通过 `businessContractCoverage` 记录审查结果；进入 `validate` 前业务契约审查必须通过。
 
 每个阶段完成后必须写入对应证据文件，再通过 `task.py advance` 进入下一阶段。最终使用 `verify.py all` 生成 `verify-result.json`，通过后才能进入 `done`。
 """
@@ -2377,9 +2415,9 @@ tools: Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch
 
 读取 `clarification.md`、`implementation-plan.md`、`docs/standards/index.md` 和 `context.architect.jsonl` 中明确引用的文件。
 
-在 `doc-plan` 阶段，编写 `implementation-plan.md` 和 `scope.json`。计划文件只能保存实现计划，必须包含固定章节：开发意图摘要、影响范围、技术方案、可测试契约、Slice 顺序、验证方式、已知限制。
+在 `doc-plan` 阶段，编写 `implementation-plan.md` 和 `scope.json`。计划文件只能保存实现计划，必须包含固定章节：开发意图摘要、影响范围、技术方案、可测试契约、业务契约覆盖、Slice 顺序、验证方式、已知限制。
 
-在 `review` 阶段，检查当前变更是否符合需求确认、实现计划和团队规范，并通过 `task.py review record` 写入 `review-result.json`。需要修正代码时保持测试通过。
+在 `review` 阶段，检查当前变更是否符合需求确认、实现计划、业务契约和团队规范，并通过 `task.py review record` 写入 `review-result.json`。需要修正代码时保持测试通过。业务契约未覆盖时，使用 `--business-contract-status failed` 和 `--missing-contract <契约编号>` 记录。
 
 禁止手工编辑受控文件：`task.json`、`clarification.jsonl`、`clarification.md`、`test-result.red.json`、`test-result.green.json`、`review-result.json`、`verify-result.json`。
 """
@@ -2394,7 +2432,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 
 读取 `clarification.md`、`implementation-plan.md`、`docs/standards/index.md` 和 `context.developer.jsonl` 中明确引用的文件。
 
-在 `green` 阶段，先确认 `test-result.red.json` 已经记录目标测试的预期失败，再实现代码使同一组目标测试通过。通过后使用 `verify.py green` 写入 `test-result.green.json`。
+在 `green` 阶段，先确认 `test-result.red.json` 已经记录目标测试的预期失败，再实现代码使同一组目标测试通过。通过后使用 `verify.py green` 写入 `test-result.green.json`。实现代码需要满足 `implementation-plan.md` 中的业务契约覆盖要求；测试暂未覆盖但计划明确要求的业务契约，也需要在实现报告中说明对应代码位置。
 
 实现必须遵守 `scope.json` 的变更范围。发现需求、计划或测试之间存在冲突时，停止实现并返回主会话处理。
 
@@ -2411,7 +2449,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 
 读取 `clarification.md`、`implementation-plan.md`、`docs/standards/index.md` 和 `context.tester.jsonl` 中明确引用的文件。
 
-在 `red` 阶段，根据可测试契约编写目标测试，并使用 `verify.py red` 写入 `test-result.red.json`。该阶段要求目标测试出现预期失败。
+在 `red` 阶段，根据可测试契约和业务契约覆盖要求编写目标测试，并使用 `verify.py red` 写入 `test-result.red.json`。该阶段要求目标测试出现预期失败。测试证据需要通过 `--contract-coverage BC-001=TestName` 记录业务契约与测试的映射；暂时无法测试的契约使用 `--uncovered-contract BC-001` 记录。
 
 在 `validate` 阶段，补充边界测试并运行必要验证，最终由主会话运行 `verify.py all` 写入 `verify-result.json`。
 
@@ -2711,7 +2749,7 @@ HARNESS_SECTION = """\
 
 | 表达 | 处理方式 |
 | --- | --- |
-| 按 `design.md` 开发 | 进入 `requirement-development` |
+| 按 `design.md` 开发 | 先进入 `requirement-confirmation`，确认后再进入 `requirement-development` |
 | 继续需求开发 | 读取当前任务并推进下一阶段 |
 | 查看当前需求开发状态 | 读取 `task.json` 的 `status` 和 `phase` |
 | 归档当前任务 | 在 `phase=done` 后移动到 `docs/tasks/archive/` |
@@ -2735,6 +2773,20 @@ clarify -> doc-plan -> red -> green -> review -> validate -> done -> archived
 需求开发前必须先完成 `requirement-confirmation`。即使需求文档完整，也要复述开发意图、验收标准和边界条件，并等待协作者确认。
 
 `clarification.jsonl` 是需求确认门禁依据，`clarification.md` 是阅读快照。
+
+需求确认中可以记录业务契约。业务契约用于保存业务场景、输入条件、预期行为、可观测信息和测试要求，使业务细节能够进入后续计划、测试和审查。
+
+## 业务契约
+
+业务契约在各阶段的使用方式如下：
+
+| 阶段 | 契约要求 |
+| --- | --- |
+| `clarify` | `clarification.jsonl` 可记录 `businessContracts` |
+| `doc-plan` | `implementation-plan.md` 必须包含 `业务契约覆盖` |
+| `red` | `test-result.red.json` 通过 `contractCoverage` 记录测试映射 |
+| `green` | `test-result.green.json` 继续记录同一批契约的实现验证 |
+| `review` | `review-result.json` 通过 `businessContractCoverage` 记录审查结果 |
 
 ## 角色职责
 
@@ -3313,7 +3365,7 @@ def main():
     print("     可先扫描一次项目，生成 docs/standards 下的项目知识文档，后续需求开发会读取这些资料。")
     print("     已安装 skill: project-doc-scanner")
     print("  3. 开始需求开发")
-    print("     准备 design.md、spec.md 或 requirements.md 后，使用「按 design.md 开发」进入 requirement-development。")
+    print("     准备 design.md、spec.md 或 requirements.md 后，使用「按 design.md 开发」先完成 requirement-confirmation，确认后再进入 requirement-development。")
 
 
 if __name__ == "__main__":

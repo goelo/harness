@@ -1,0 +1,4 @@
+{"file":"README.md","reason":"Harness 阶段、计划章节和验证方式说明"}
+{"file":"harness_scripts/task.py","reason":"任务状态、需求确认、计划校验和 review 门禁实现"}
+{"file":"harness_scripts/verify.py","reason":"RED/GREEN 证据与验证结果生成"}
+{"file":"init-harness.py","reason":"安装模板、技能和角色提示词来源"}

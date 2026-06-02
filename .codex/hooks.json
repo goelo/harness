@@ -1,0 +1,50 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .codex/hooks/harness-session-start.py",
+            "timeout": 10,
+            "statusMessage": "Loading harness context..."
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .codex/hooks/harness-workflow-state.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "spawn_agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .codex/hooks/harness-inject-context.py",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "followup_task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .codex/hooks/harness-inject-context.py",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

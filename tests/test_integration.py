@@ -102,6 +102,9 @@ class TestFullHarnessLoop(unittest.TestCase):
 ## 可测试契约
 登录成功返回 token。
 
+## 业务契约覆盖
+BC-001 由登录成功测试覆盖。
+
 ## Slice 顺序
 1. 登录接口。
 

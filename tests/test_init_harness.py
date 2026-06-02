@@ -77,6 +77,7 @@ class TestInitHarnessStructure(InitHarnessTestCase):
         self.assertIn("3. 开始需求开发", result.stdout)
         self.assertIn("已安装 skill: harness-configure-verify", result.stdout)
         self.assertIn("已安装 skill: project-doc-scanner", result.stdout)
+        self.assertIn("先完成 requirement-confirmation", result.stdout)
 
     def test_verify_config_template_uses_required_checks(self):
         self.run_init()
@@ -148,10 +149,21 @@ class TestInitHarnessSkills(InitHarnessTestCase):
         grill_compat = (claude_skills / "grill-me" / "SKILL.md").read_text(encoding="utf-8")
 
         self.assertIn("name: requirement-confirmation", confirmation)
+        self.assertIn("按 design.md 开发", confirmation)
+        self.assertIn("按照需求开发", confirmation)
         self.assertIn("每次只提出一个问题", confirmation)
+        self.assertIn("业务契约", confirmation)
         self.assertIn("confirmedBy", confirmation)
         self.assertIn("name: requirement-development", development)
+        self.assertIn("仅在需求确认完成后使用", development)
+        self.assertIn("业务契约覆盖", development)
+        self.assertNotIn('触发语包括 "按 design.md 开发"', development)
+        self.assertNotIn("按照需求开发", development)
         self.assertIn("requirement-confirmation", development)
+        self.assertIn("停止需求开发流程，改用 `requirement-confirmation`", development)
+        self.assertIn("不得创建 task", development)
+        self.assertIn("必须调用对应子代理", development)
+        self.assertNotIn("single-session", development)
         self.assertIn("task.py advance", development)
         self.assertIn("name: harness-implement", harness_compat)
         self.assertIn("requirement-development", harness_compat)
@@ -526,6 +538,7 @@ class TestInitHarnessHooksAndInstructions(InitHarnessTestCase):
             self.assertIn("# Agent Harness", content)
             self.assertIn("docs/tasks/", content)
             self.assertIn("requirement-confirmation", content)
+            self.assertIn("| 按 `design.md` 开发 | 先进入 `requirement-confirmation`", content)
             self.assertIn("clarify -> doc-plan -> red -> green -> review -> validate -> done -> archived", content)
 
     def test_instruction_append_is_idempotent(self):
@@ -600,6 +613,15 @@ class TestInitHarnessContextScripts(InitHarnessTestCase):
         self.assertIn("clarification.md", output.stdout)
         self.assertIn("implementation-plan.md", output.stdout)
         self.assertIn("继续开发", output.stdout)
+
+    def test_installed_agent_instructions_include_business_contract_section(self):
+        result = self.run_init()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        content = (self.project_dir / "AGENTS.md").read_text(encoding="utf-8")
+
+        self.assertIn("业务契约", content)
+        self.assertIn("业务契约覆盖", content)
 
     def test_embedded_inject_hook_template_reads_docs_task_context(self):
         standalone_dir = self.project_dir / "standalone"

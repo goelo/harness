@@ -1,0 +1,14 @@
+{
+  "required": ["test", "scope"],
+  "commands": {
+    "lint": "",
+    "type": "",
+    "test": "python3 -m unittest discover tests",
+    "coverage": ""
+  },
+  "scope": {
+    "denied": [
+      ".harness/runtime/**"
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "success": true,
+  "command": "python3 -m unittest tests.test_task_cli.TestClarifyAndAdvance.test_clarify_confirm_records_business_contracts",
+  "exitCode": 1,
+  "targetTests": [
+    "tests.test_task_cli.TestClarifyAndAdvance.test_clarify_confirm_records_business_contracts"
+  ],
+  "stdout": "",
+  "stderr": "F\n======================================================================\nFAIL: test_clarify_confirm_records_business_contracts (tests.test_task_cli.TestClarifyAndAdvance.test_clarify_confirm_records_business_contracts)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/didi/go/src/git.xiaojukeji.com/harness/tests/test_task_cli.py\", line 196, in test_clarify_confirm_records_business_contracts\n    self.assertIn(\"business_contracts: 1\", markdown)\n    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'business_contracts: 1' not found in '---\\nconfirmation_source: live\\nconfirmed: true\\nconfirmed_by: collaborator\\nopen_questions: []\\nsource_doc: inline-request\\nsource_doc_hash: sha256:test\\n---\\n\\n# 需求确认\\n\\n## 开发意图\\n\\n增加订单超时控制能力\\n\\n## 验收标准\\n\\n1. 超时订单会被拒绝\\n\\n## 边界条件\\n\\n1. 本次不修改支付流程\\n\\n## 业务契约\\n\\n| 编号 | 业务场景 | 输入条件 | 预期行为 | 可观测信息 | 是否需要测试 |\\n| --- | --- | --- | --- | --- | --- |\\n| BC-001 | 订单已超过允许支付时间 | 订单状态为待支付，当前时间晚于超时时间 | 订单被拒绝继续支付 | 日志包含 order_id 和 reject_reason | 是 |\\n\\n'\n\n----------------------------------------------------------------------\nRan 1 test in 0.220s\n\nFAILED (failures=1)\n",
+  "contractCoverage": {
+    "BC-001": [
+      "tests.test_task_cli.TestClarifyAndAdvance.test_clarify_confirm_records_business_contracts"
+    ]
+  },
+  "uncoveredContracts": [],
+  "finishedAt": "2026-06-02T08:11:24.884909+00:00",
+  "generatedBy": "verify.py red",
+  "expectedFailureObserved": true
+}

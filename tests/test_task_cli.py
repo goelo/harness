@@ -101,6 +101,18 @@ class TestTaskCreate(TaskCliTestCase):
         data = json.loads((self.task_dir() / "task.json").read_text(encoding="utf-8"))
         self.assertEqual(data["originIntent"], "requirement-confirmation")
 
+    def test_create_rejects_single_session_execution_mode(self):
+        result = _run_task(
+            self.project_dir,
+            "create",
+            "订单超时控制",
+            "--execution-mode",
+            "single-session",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("invalid choice", result.stderr)
+
 
 class TestClarifyAndAdvance(TaskCliTestCase):
     def setUp(self):
@@ -144,6 +156,48 @@ class TestClarifyAndAdvance(TaskCliTestCase):
         self.assertEqual(data["phase"], "doc-plan")
         self.assertEqual(data["sourceDocHash"], "sha256:test")
 
+    def test_clarify_confirm_records_business_contracts(self):
+        result = _run_task(
+            self.project_dir,
+            "clarify",
+            "confirm",
+            "--development-intent",
+            "增加订单超时控制能力",
+            "--acceptance-criterion",
+            "超时订单会被拒绝",
+            "--boundary",
+            "本次不修改支付流程",
+            "--source-doc",
+            "inline-request",
+            "--source-hash",
+            "sha256:test",
+            "--business-contract",
+            json.dumps(
+                {
+                    "id": "BC-001",
+                    "scenario": "订单已超过允许支付时间",
+                    "input": "订单状态为待支付，当前时间晚于超时时间",
+                    "expectedBehavior": "订单被拒绝继续支付",
+                    "observable": "日志包含 order_id 和 reject_reason",
+                    "testRequired": True,
+                },
+                ensure_ascii=False,
+            ),
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        records = [
+            json.loads(line)
+            for line in (self.task / "clarification.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(records[-1]["businessContracts"][0]["id"], "BC-001")
+        markdown = (self.task / "clarification.md").read_text(encoding="utf-8")
+        self.assertIn("business_contracts: 1", markdown)
+        self.assertIn("## 业务契约", markdown)
+        self.assertIn("BC-001", markdown)
+        self.assertIn("订单已超过允许支付时间", markdown)
+
     def test_advance_red_checks_plan_scope_and_manifests(self):
         _confirm(self.project_dir)
         self.assertEqual(_run_task(self.project_dir, "advance", "doc-plan").returncode, 0)
@@ -157,6 +211,19 @@ class TestClarifyAndAdvance(TaskCliTestCase):
         self.assertEqual(red.returncode, 0, red.stderr)
         data = json.loads((self.task / "task.json").read_text(encoding="utf-8"))
         self.assertEqual(data["phase"], "red")
+
+    def test_advance_red_requires_business_contract_plan_section(self):
+        _confirm(self.project_dir)
+        self.assertEqual(_run_task(self.project_dir, "advance", "doc-plan").returncode, 0)
+        write_valid_plan_package(self.project_dir, self.task)
+        content = (self.task / "implementation-plan.md").read_text(encoding="utf-8")
+        content = content.replace("## 业务契约覆盖\nBC-001 由订单超时测试覆盖。\n\n", "")
+        (self.task / "implementation-plan.md").write_text(content, encoding="utf-8")
+
+        result = _run_task(self.project_dir, "advance", "red")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("业务契约覆盖", result.stderr)
 
     def test_intent_set_records_history(self):
         result = _run_task(self.project_dir, "intent", "set", "requirement-confirmation")
@@ -200,6 +267,31 @@ class TestReviewAndArchive(TaskCliTestCase):
         self.assertEqual(review["headRef"], "working-tree")
         self.assertIn("feature.txt", review["changedFiles"])
         self.assertEqual(review["specCompliance"]["status"], "passed")
+        self.assertEqual(review["businessContractCoverage"]["status"], "passed")
+
+    def test_validate_requires_business_contract_review_passed(self):
+        (self.project_dir / "feature.txt").write_text("new\n", encoding="utf-8")
+        result = _run_task(
+            self.project_dir,
+            "review",
+            "record",
+            "--spec-compliance",
+            "passed",
+            "--code-quality",
+            "passed",
+            "--business-contract-status",
+            "failed",
+            "--missing-contract",
+            "BC-001",
+            "--summary",
+            "业务契约缺少测试映射",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        advance = _run_task(self.project_dir, "advance", "validate")
+
+        self.assertNotEqual(advance.returncode, 0)
+        self.assertIn("business contract review", advance.stderr)
 
     def test_archive_requires_done_phase(self):
         result = _run_task(self.project_dir, "archive", self.task.name)
@@ -265,6 +357,9 @@ def write_valid_plan_package(project_dir: Path, task_dir: Path) -> None:
 
 ## 可测试契约
 超时订单会被拒绝。
+
+## 业务契约覆盖
+BC-001 由订单超时测试覆盖。
 
 ## Slice 顺序
 1. 增加测试。

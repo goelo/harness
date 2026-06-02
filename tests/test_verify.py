@@ -172,6 +172,24 @@ class TestRedGreenEvidence(VerifyScriptTestCase):
         self.assertEqual(data["exitCode"], 7)
         self.assertEqual(data["targetTests"], ["TestCreateOrder"])
 
+    def test_red_records_contract_coverage(self):
+        result = self.run_verify(
+            "red",
+            "--command",
+            "exit 7",
+            "--target-test",
+            "TestCreateOrder",
+            "--contract-coverage",
+            "BC-001=TestCreateOrder",
+            "--uncovered-contract",
+            "BC-002",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        data = json.loads((self.task_dir / "test-result.red.json").read_text(encoding="utf-8"))
+        self.assertEqual(data["contractCoverage"], {"BC-001": ["TestCreateOrder"]})
+        self.assertEqual(data["uncoveredContracts"], ["BC-002"])
+
     def test_red_fails_when_command_passes(self):
         result = self.run_verify(
             "red",
@@ -198,6 +216,22 @@ class TestRedGreenEvidence(VerifyScriptTestCase):
         data = json.loads((self.task_dir / "test-result.green.json").read_text(encoding="utf-8"))
         self.assertTrue(data["expectedPassObserved"])
         self.assertEqual(data["targetTests"], ["TestCreateOrder"])
+
+    def test_green_records_contract_coverage(self):
+        result = self.run_verify(
+            "green",
+            "--command",
+            "true",
+            "--target-test",
+            "TestCreateOrder",
+            "--contract-coverage",
+            "BC-001=TestCreateOrder,TestCreateOrderAudit",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        data = json.loads((self.task_dir / "test-result.green.json").read_text(encoding="utf-8"))
+        self.assertEqual(data["contractCoverage"], {"BC-001": ["TestCreateOrder", "TestCreateOrderAudit"]})
+        self.assertEqual(data["uncoveredContracts"], [])
 
 
 if __name__ == "__main__":

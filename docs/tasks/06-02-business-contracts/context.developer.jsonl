@@ -1,0 +1,4 @@
+{"file":"harness_scripts/task.py","reason":"业务契约记录、计划校验和 review 门禁实现"}
+{"file":"harness_scripts/verify.py","reason":"契约覆盖证据字段实现"}
+{"file":"init-harness.py","reason":"安装模板中的业务契约说明"}
+{"file":"README.md","reason":"仓库级使用说明"}

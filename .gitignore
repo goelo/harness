@@ -7,3 +7,32 @@ __pycache__/
 .DS_Store
 .idea/
 .vscode/
+
+# harness defaults — keep these so __pycache__ etc. don't leak into commits
+
+# harness runtime state (session pointers — local, never commit)
+.harness/runtime/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp

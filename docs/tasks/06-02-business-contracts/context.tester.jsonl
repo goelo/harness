@@ -1,0 +1,5 @@
+{"file":"tests/test_task_cli.py","reason":"task.py CLI 行为测试"}
+{"file":"tests/test_verify.py","reason":"verify.py 证据字段测试"}
+{"file":"tests/test_init_harness.py","reason":"安装模板测试"}
+{"file":"harness_scripts/task.py","reason":"测试目标脚本"}
+{"file":"harness_scripts/verify.py","reason":"测试目标脚本"}
